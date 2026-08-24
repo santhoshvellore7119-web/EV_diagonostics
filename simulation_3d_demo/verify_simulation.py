@@ -37,14 +37,14 @@ def check_class_and_methods(filename):
     try:
         with open(filename, 'r', encoding='utf-8') as f:
             content = f.read()
-
+        
         # Parse the AST
         tree = ast.parse(content)
-
+        
         # Look for class definition
         class_found = False
         methods_found = []
-
+        
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef) and node.name == 'EVBattery3DSimulator':
                 class_found = True
@@ -52,7 +52,7 @@ def check_class_and_methods(filename):
                 for item in node.body:
                     if isinstance(item, ast.FunctionDef):
                         methods_found.append(item.name)
-
+        
         if class_found:
             print(f"[OK] {filename} contains EVBattery3DSimulator class")
             expected_methods = ['__init__', 'update_visualization', 'compute_sensor_readings']
@@ -66,7 +66,7 @@ def check_class_and_methods(filename):
         else:
             print(f"[ERROR] {filename} does not contain EVBattery3DSimulator class")
             return False
-
+            
     except Exception as e:
         print(f"[ERROR] {filename} could not be parsed for class/method check: {e}")
         return False
@@ -75,31 +75,32 @@ def main():
     """Run verification checks"""
     print("Verifying 3D EV Battery Simulation")
     print("=" * 40)
-
+    
     # Files to check
     files_to_check = [
-        'ev_battery_3d_simulation.py'
+        'ev_battery_3d_simulation.py',
+        'test_simulation.py'
     ]
-
+    
     all_passed = True
-
+    
     for filename in files_to_check:
-        filepath = os.path.join('.', filename)
+        filepath = os.path.join('simulation_3d_demo', filename)
         print(f"\nChecking {filename}:")
-
+        
         file_exists = check_file_exists(filepath)
         if not file_exists:
             all_passed = False
             continue
-
+            
         syntax_ok = check_python_syntax(filepath)
         if not syntax_ok:
             all_passed = False
-
+            
         class_ok = check_class_and_methods(filepath)
         if not class_ok:
             all_passed = False
-
+    
     print("\n" + "=" * 40)
     if all_passed:
         print("[OK] All verification checks passed!")

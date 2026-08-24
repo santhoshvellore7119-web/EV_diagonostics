@@ -146,3 +146,15 @@ With these tasks completed, the EV Battery Diagnostic System now has:
 5. Comprehensive testing and validation capabilities
 
 The system is ready for hardware prototyping, firmware development, and comprehensive testing of the multi-modal diagnostic and active cell-rebalancing algorithms.
+
+## Previous Task Locations (prior to reorganization)
+
+The tasks were previously located in the following directories (now consolidated into the canonical structure):
+
+- Task #1: Task1_MATLAB_Simulink_Demo/
+- Task #2: Task2_EV_Cell_Multimodal_Sim/
+- Task #3: Task3_Sibling_Innovations/
+- Task #4: Task4_Hardware_Implementation/
+- Task #5: Task5_Backend_Refactor/host_application/
+
+All task content has been merged into the root-level directories as described above.

@@ -10,11 +10,16 @@
 
 clear; close all; clc;
 
+% Add necessary paths to MATLAB search path
+addpath(genpath(pwd));
+addpath(genpath(fullfile(pwd, 'matlab_simulink_demo')));
+
+
 fprintf('=== Low-Cost Multi-Modal Diagnostic System Demo ===\n');
 fprintf('Demonstrating how different degradation modes affect sensor readings\n\n');
 
 % Load system parameters
-params_base = load_parameters();
+params = load_parameters();
 
 % Define test scenarios
 scenarios = {
@@ -45,7 +50,11 @@ soh_values = [95.0, 88.0, 55.0, 82.0, 90.0, 45.0];
 
 % Create figure for plotting
 figure('Position', [100 100 1200 800]);
-suptitle('Battery Diagnostic System - Sensor Readings by Degradation Mode', 'FontSize', 16, 'FontWeight', 'bold');
+annotation('textbox', [0.3, 0.92, 0.4, 0.08], ...
+    'String', 'Battery Diagnostic System - Sensor Readings by Degradation Mode', ...
+    'FontSize', 16, 'FontWeight', 'bold', ...
+    'BackgroundColor', [1 1 1], 'EdgeColor', 'none', ...
+    'HorizontalAlignment', 'center');
 
 % Loop through each scenario
 for i = 1:numel(scenarios)
@@ -53,20 +62,23 @@ for i = 1:numel(scenarios)
     subplot(2, 3, i);
 
     % Set current scenario parameters
-    params_base.current_soc = soc_values(i);
-    params_base.current_degradation = degradation_modes{i};
-    params_base.current_soh = soh_values(i);
+    params.current_soc = soc_values(i);
+    params.current_degradation = degradation_modes{i};
+    params.current_soh = soh_values(i);
 
     % ENHANCEMENT: Use enhanced degradation mode library to get parameters
-    [degradation_params, mode_info] = degradation_mode_library(
-        degradation_modes{i}, soh_values(i));
+    [degradation_params, mode_info] = degradation_mode_library(degradation_modes{i}, soh_values(i));
 
     % Merge base params with degradation-specific params
-    params = params_base;
-    params = struct(params, degradation_params);  % Overlay degradation params
+    % Instead of struct merge (which can cause issues), we copy fields directly
+    deg_fields = fieldnames(degradation_params);
+    for j = 1:numel(deg_fields)
+        field_name = deg_fields{j};
+        params.(field_name) = degradation_params.(field_name);
+    end
 
     % Initialize physics model
-    model = init_physics_model(model, params);
+    model = init_physics_model(params);
 
     % Simulate cell response
     response = simulate_cell_response(model, params.current_soc, params, true);
@@ -133,8 +145,12 @@ for i = 1:numel(scenarios)
     end
 end
 
-% Adjust layout
-tight_layout;
+% Adjust layout - simple alternative to tight_layout
+    drawnow; % Force GUI update
+    % Add some spacing between subplots
+    if figNum > 1
+        sgtitle(''); % Clear any existing suptitle to reset spacing
+    end
 
 % Add explanation
 explanation = [
@@ -146,11 +162,16 @@ explanation = [
     '• Temp Rise: Temperature increase from joule heating during excitation\n';
     '• dT/dt: Rate of temperature change during excitation\n\n';
     'Different degradation modes produce distinct signatures across these modalities,\n';
-    'enabling machine learning fusion for accurate classification and SOH estimation.'
+    'enabling machine learning fusion for accurate classification and SOH estimation.\n\n';
+    'ENHANCEMENTS DEMONSTRATED:\n';
+    '• Mixed-mode detection (e.g., 0.3*li_plating + 0.7*active_material_loss)\n';
+    '• Continuous degradation progression modeling\n';
+    '• Uncertainty quantification\n';
+    '• SOH-dependent parameter scaling'
 ];
 
 % Add text box
-annotation('textbox', [0.02, 0.02, 0.4, 0.15], ...
+annotation('textbox', [0.02, 0.02, 0.4, 0.2], ...
     'String', explanation, ...
     'FontSize', 9, ...
     'BackgroundColor', [1.0 1.0 0.9], ...
@@ -166,7 +187,6 @@ fprintf('3. Run the simulation to see dynamic behavior\n');
 % Wait for user to close figure
 uiwait(gcf);
 
-end
 
 % Helper functions (simplified versions)
 function params = load_parameters()
@@ -212,14 +232,12 @@ function params = load_parameters()
     params.excitation_amplitude = 0.5;
 end
 
-function model = init_physics_model(model, params)
+function model = init_physics_model(params)
 %INIT_PHYSICS_MODEL Initialize physics model
-    if nargin < 2
+    if nargin < 1
         params = load_parameters();
     end
-    if isempty(model)
-        model = struct();
-    end
+    model = struct();
     model.P = params;
     model.t = (0:1/model.P.DAQ_SAMPLING_RATE_HZ:model.P.EXCITATION_PERIOD_S)';
     model.t = model.t(1:end-1);
@@ -230,7 +248,7 @@ end
 
 function response = simulate_cell_response(model, soc, params, add_noise)
 %SIMULATE_CELL_RESPONSE Simulate battery cell response
-% Enhanced version that uses parameter struct from degradation_mode_library
+    % Enhanced version that uses parameter struct from degradation_mode_library
     if nargin < 4, add_noise = true; end
     if nargin < 3, params = load_parameters(); end
     if nargin < 2, soc = 0.5; end
@@ -245,8 +263,12 @@ function response = simulate_cell_response(model, soc, params, add_noise)
     % Electrical response (simplified)
     ocv = P.OCV_INTERCEPT + P.OCV_SLOPE * soc;
     % Use enhanced parameters if available, fallback to base params
-    R0 = P.R0 * getfield(P, 'R0_scale', 1.0);
-    R1 = P.R1 * getfield(P, 'R1_scale', 1.0);
+    R0_scale = getfield(P, 'R0_scale');
+    if isempty(R0_scale), R0_scale = 1.0; end
+    R0 = P.R0 * R0_scale;
+    R1_scale = getfield(P, 'R1_scale');
+    if isempty(R1_scale), R1_scale = 1.0; end
+    R1 = P.R1 * R1_scale;
     R_total = R0 + R1;
     voltage = ocv - excitation_pulse * R_total;
     current = excitation_pulse;
@@ -259,9 +281,12 @@ function response = simulate_cell_response(model, soc, params, add_noise)
     % Ultrasonic response (simplified)
     tof_base = 2 * P.ULTRASONIC_PATH_LENGTH_M / P.SOS;
     % Use enhanced parameters
-    sos_factor = getfield(P, 'sos_factor', 1.0);
-    attenuation_factor = getfield(P, 'attenuation_factor', 1.0);
-    phase_factor = getfield(P, 'phase_factor', 0);
+    sos_factor = getfield(P, 'sos_factor');
+    if isempty(sos_factor), sos_factor = 1.0; end
+    attenuation_factor = getfield(P, 'attenuation_factor');
+    if isempty(attenuation_factor), attenuation_factor = 1.0; end
+    phase_factor = getfield(P, 'phase_factor');
+    if isempty(phase_factor), phase_factor = 0; end
     tof = tof_base / sos_factor;
     % Simulate received signal
     delay_samples = round(tof * P.DAQ_SAMPLING_RATE_HZ);
@@ -285,9 +310,14 @@ function response = simulate_cell_response(model, soc, params, add_noise)
     temperature_rise = zeros(size(t));
     temp_ambient = P.AMBIENT_TEMPERATURE_K;
     % Use enhanced parameters
-    R_th = P.THERMAL_RESISTANCE_K_PER_W * getfield(P, 'R_th_scale', 1.0);
-    C_th = P.THERMAL_CAPACITY_J_PER_K * getfield(P, 'C_th_scale', 1.0);
-    heat_factor = P.HEAT_FACTOR * getfield(P, 'heat_factor', 1.0);
+    R_th_scale = getfield(P, 'R_th_scale');
+    if isempty(R_th_scale), R_th_scale = 1.0; end
+    R_th = P.THERMAL_RESISTANCE_K_PER_W * R_th_scale;
+    C_th_scale = getfield(P, 'C_th_scale');
+    if isempty(C_th_scale), C_th_scale = 1.0; end
+    C_th = P.THERMAL_CAPACITY_J_PER_K * C_th_scale;
+    heat_factor = getfield(P, 'heat_factor');
+    if isempty(heat_factor), heat_factor = 1.0; end
     for i = 2:length(t)
         power_in = energy_per_sample(i-1) * heat_factor;
         if i > 1
