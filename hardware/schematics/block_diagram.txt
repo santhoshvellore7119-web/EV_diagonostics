@@ -1,0 +1,55 @@
+"""
+Block Diagram for Low-Cost Multi-Modal Diagnostic and Active Cell-Rebalancing System
+"""
+
+BLOCK_DIAGRAM = """
++---------------------+     +---------------------+     +---------------------+
+|   Electrical Sensor |     | Ultrasonic Sensor   |     |   Thermal Sensor    |
+|  (INA226 or equiv)  |     |  (Piezoelectric     |     |  (Contact Array /   |
+|  Measures: V, I,    |     |   transducer pair)  |     |   IR Thermopile)    |
+|  Power, Shunt V)    |     |  Measures: ToF,     |     |  Measures: Temp,    |
+|                     |     |   Amplitude, Phase  |     |   dT/dt)            |
++---------------------+     +---------------------+     +---------------------+
+          |                         |                         |
+          | I2C                     | GPIO                    | I2C / Analog
+          v                         v                         v
++---------------------+     +---------------------+     +---------------------+
+|                     |     |                     |     |                     |
+|       MCU           |◄────┼─────► Timer &       |◄────┼─────►   MCU         |
+|  (ESP32 / STM32)    |     |  Excitation Control |     |  (Same MCU)       |
+|                     |     |                     |     |                     |
+|  - Processes sensor|     |  - Generates        |     |  - Runs sensor    |
+|    data             |     |    excitation       |     |    sampling loops |
+|  - Runs ML inference|     |    pulse (GPIO)     |     |  - Does sensor    |
+|  - Controls re-    |     |  - Triggers         |     |    fusions        |
+|    balancing        |     |    ultrasonic       |     |  - Manages states |
+|  - Communicates    |     |    sensing          |     |  - Controls power |
+|    (UART/USB)      |     |                     |     |    stage          |
++---------------------+     +---------------------+     +---------------------+
+          |                         |                         |
+          |                         |                         |
+          |                         |                         |
+          v                         v                         v
++---------------------+     +---------------------+     +---------------------+
+|                     |     |                     |     |                     |
+|   UART / USB        |     |   Power Stage       |     |   User Interface  |
+|   (to Host PC)      |     |   (Bidirectional    |     |   (Optional LCD)  |
+|                     |     |    DC-DC Converter) |     |                     |
+|  - Streams sensor   |     |  - Applies          |     |  - Shows status   |
+|    data             |     |    recovery         |     |  - Shows menus    |
+|  - Receives         |     |    waveforms        |     |                     |
+|    commands         |     |  - Controlled by    |     |                     |
+|                     |     |    MCU via PID      |     |                     |
++---------------------+     +---------------------+     +---------------------+
+
+Notes:
+- All sensors are synchronized to the same excitation pulse trigger.
+- The MCU uses a hardware timer to generate precise excitation pulses and
+  trigger sensing tasks simultaneously.
+- Data from all three modalities is fused in the MCU and sent to a host
+  computer for ML inference (or run on-device if sufficient resources).
+- The power stage is controlled by the MCU to apply recovery waveforms
+  based on the decision engine's output.
+"""
+
+print(BLOCK_DIAGRAM)

@@ -1,0 +1,28 @@
+% This is a placeholder for the 2RC ECM Simulink subsystem.
+% In a real MATLAB/Simulink environment, this would be a graphical subsystem
+% implementing the 2RC equivalent circuit model using Simulink blocks.
+
+% The subsystem should implement:
+% V_ct = OCV(SOC) - I*R0 - V1 - V2
+% dV1/dt = -V1/(R1*C1) + I/C1
+% dV2/dt = -V2/(R2*C2) + I/C2
+%
+% Where:
+% - OCV(SOC) is the open-circuit voltage as a function of state of charge
+% - R0 is the ohmic resistance
+% - R1, C1 are the first polarization resistance and capacitance
+% - R2, C2 are the second polarization resistance and capacitance (for 2RC model)
+% - I is the battery current
+% - V1, V2 are the polarization voltages
+% - V_ct is the terminal voltage
+
+% For now, we implement a simplified version that can be expanded
+% to include degradation mode effects and proper parameterization.
+
+% This file represents the intended structure. Actual implementation requires
+% using MATLAB Simulink editor to create the graphical subsystem with:
+% - Gain blocks for resistances
+% - Integrator or State-Space blocks for RC dynamics
+% - Sum blocks for voltage calculations
+% - Lookup tables for OCV(SOC)
+% - Parameter references to the workspace or data dictionary

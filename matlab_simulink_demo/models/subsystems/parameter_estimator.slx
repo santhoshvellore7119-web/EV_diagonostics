@@ -1,0 +1,51 @@
+% This is a placeholder for the parameter estimator Simulink subsystem.
+% In a real MATLAB/Simulink environment, this would be a graphical subsystem
+% implementing the Recursive Least Squares (RLS) or Extended Kalman Filter (EKF)
+% for online ECM parameter identification.
+
+% The subsystem should estimate:
+% - ECM parameters: R0 (ohmic resistance), R1 (polarization resistance), C1 (polarization capacitance)
+% - Optionally: R2, C2 for 2RC model or diffusion parameters
+% - Parameter uncertainties/covariance for adaptive control
+%
+% Inputs:
+% - Measured battery voltage
+% - Applied battery current (excitation pulse)
+% - Sampling timestamp or sample count
+% - Enable/reset signals
+% - Forgetting factor (for RLS) or process/measurement noise (for EKF)
+%
+% Outputs:
+% - Estimated parameters [R0_est, R1_est, C1_est]
+% - Parameter uncertainties [R0_unc, R1_unc, C1_unc] or covariance matrix
+% - Convergence indicator (when uncertainties fall below threshold)
+% - Estimation validity flag
+
+% The RLS algorithm implementation:
+% theta[k] = theta[k-1] + L[k] * (y[k] - phi[k]' * theta[k-1])
+% P[k] = (I - L[k] * phi[k]') * P[k-1] / lambda
+% L[k] = P[k-1] * phi[k] / (lambda + phi[k]' * P[k-1] * phi[k])
+%
+% Where:
+% - theta = [R0, R1, C1]' (parameters to estimate)
+% - y[k] = measured voltage at time k
+% - phi[k] = regressor vector at time k
+% - lambda = forgetting factor (0 < lambda <= 1)
+% - P[k] = covariance matrix at time k
+% - L[k] = gain vector at time k
+%
+% For ECM voltage model: V = OCV - I*R0 - V1
+% where V1 is voltage across RC pair
+% Need to formulate regressor that's linear in parameters
+%
+% With degradation mode awareness:
+% - Estimator can be initialized with nominal values adjusted for degradation
+% - Uncertainty bounds can be compared against degradation-dependent thresholds
+%
+% This file represents the intended structure. Actual implementation requires
+% using MATLAB Simulink editor to create the graphical subsystem with:
+% - MATLAB Function block implementing RLS/EKF equations
+% - Delay or memory blocks for maintaining state between samples
+% - Math operations for matrix computations
+% - Logic blocks for convergence detection
+% - Parameter ports for forgetting factor and initial conditions

@@ -1,0 +1,49 @@
+% This is a placeholder for the excitation controller Simulink subsystem.
+% In a real MATLAB/Simulink environment, this would contain the Stateflow chart
+% implementing the adaptive supervisory logic for excitation control.
+
+% The subsystem should implement:
+% - State machine: IDLE -> EXCITE -> ESTIMATE -> EVALUATE_UNCERTAINTY ->
+%   {CONVERGED | NOT_CONVERGED} -> (back to EXCITE or IDLE)
+% - Adaptive control logic based on parameter estimation uncertainty
+% - Safety limits for excitation amplitude, width, and rate
+% - Interface with parameter estimator for uncertainty feedback
+%
+% Inputs:
+% - Parameter estimates [R0_est, R1_est, C1_est]
+% - Parameter uncertainties [R0_unc, R1_unc, C1_unc] or covariance metrics
+% - Estimation convergence flag
+% - Safety limits (max amplitude, max width, max duty cycle)
+% - Cycle timing signals
+% - Manual override signals
+%
+% Outputs:
+% - Excitation amplitude command
+% - Excitation width command
+% - Excitation period command
+% - Estimator reset signal
+% - Hold/reduce rate signal
+% - Current state indicator (for monitoring/diagnostics)
+%
+% States:
+% - IDLE: Waiting for start signal, outputs zero/minimal excitation
+% - EXCITE: Applying excitation pulse with current parameters
+% - ESTIMATE: Waiting for parameter estimation to complete
+% - EVALUATE_UNCERTAINTY: Checking if estimates have converged
+% - CONVERGED: Parameters have converged; optionally hold or reduce excitation rate
+% - NOT_CONVERGED: Parameters not converged; increase amplitude/rate (within limits)
+%
+% Adaptive Logic:
+% - If uncertainty high -> increase excitation amplitude to improve SNR
+% - If uncertainty medium -> maintain current excitation level
+% - If uncertainty low -> can decrease excitation to save energy
+% - Also adjust repetition rate based on convergence speed
+% - Apply rate limiting and safety constraints
+%
+% This file represents the intended structure. Actual implementation requires
+% using MATLAB Simulink and Stateflow editors to create:
+% - Stateflow graphical state machine with the specified states and transitions
+% - MATLAB Function blocks for adaptive logic computations
+% - Gain blocks for applying limits and scaling
+% - Memory blocks for storing previous cycle parameters
+% - Output ports for excitation parameters and control signals

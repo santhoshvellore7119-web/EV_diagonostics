@@ -1,0 +1,30 @@
+% This is a placeholder for the Stateflow chart implementation.
+% In a real MATLAB/Simulink environment, this would be a graphical Stateflow file
+% implementing the adaptive excitation control logic.
+
+% States:
+% - IDLE: Waiting for start signal
+% - EXCITE: Applying excitation pulse
+% - ESTIMATE: Estimating ECM parameters from response
+% - EVALUATE_UNCERTAINTY: Checking if parameter estimates have converged
+% - CONVERGED: Parameters have converged, optionally hold or reduce rate
+% - NOT_CONVERGED: Parameters not converged, increase amplitude/rate (within safety limits)
+
+% Transitions:
+% IDLE -> EXCITE: Start signal received
+% EXCITE -> ESTIMATE: Excitation pulse completed
+% ESTIMATE -> EVALUATE_UNCERTAINTY: Parameter estimation completed
+% EVALUATE_UNCERTAINTY -> CONVERGED: Uncertainty below threshold
+% EVALUATE_UNCERTAINTY -> NOT_CONVERGED: Uncertainty above threshold
+% CONVERGED -> IDLE: Hold time elapsed or new cycle requested
+% NOT_CONVERGED -> EXCITE: Increase amplitude/rate and try again (with safety limits)
+
+% The chart would output:
+% - excitation_amplitude: Amplitude for next pulse
+% - excitation_width: Width for next pulse
+% - excitation_period: Period for next pulse
+% - reset_estimator: Signal to reset parameter estimator
+% - hold_control: Signal to hold or reduce excitation rate
+
+% This file represents the intended structure. Actual implementation requires
+% using MATLAB Stateflow editor to create the graphical state machine.
