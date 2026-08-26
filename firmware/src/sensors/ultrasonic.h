@@ -12,7 +12,7 @@
  * @brief Structure to hold ultrasonic measurement data
  */
 typedef struct {
-  float time_of_fight_us;   //!< Time of flight in microseconds
+  float time_of_flight_us;   //!< Time of flight in microseconds
   float amplitude;          //!< Echo amplitude (relative)
   float phase_shift;        //!< Phase shift (if using coherent detection)
   uint32_t timestamp_us;    //!< Timestamp in microseconds

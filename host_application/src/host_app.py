@@ -328,7 +328,7 @@ class HostApp(QtWidgets.QMainWindow):
             electrical_value = electrical_packet.get('bus_voltage_v', 0.0)
 
             # Process ultrasonic data (use time-of-flight for plotting)
-            ultrasonic_value = ultrasonic_packet.get('time_of_fight_us', 0.0)
+            ultrasonic_value = ultrasonic_packet.get('time_of_flight_us', 0.0)
 
             # Process thermal data (use temperature for plotting)
             thermal_value = thermal_packet.get('temperature_c', 0.0)

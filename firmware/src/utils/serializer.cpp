@@ -23,7 +23,7 @@ void serializer_to_json(const DAQPacket *packet, char *json_buffer, size_t buffe
       "\"timestamp_us\":%u"
     "},"
     "\"ultrasonic\":{"
-      "\"time_of_fight_us\":%.3f,"
+      "\"time_of_flight_us\":%.3f,"
       "\"amplitude\":%.3f,"
       "\"phase_shift\":%.3f,"
       "\"timestamp_us\":%u"
@@ -41,7 +41,7 @@ void serializer_to_json(const DAQPacket *packet, char *json_buffer, size_t buffe
     packet->electrical.current_a,
     packet->electrical.power_w,
     packet->electrical.timestamp_us,
-    packet->ultrasonic.time_of_fight_us,
+    packet->ultrasonic.time_of_flight_us,
     packet->ultrasonic.amplitude,
     packet->ultrasonic.phase_shift,
     packet->ultrasonic.timestamp_us,

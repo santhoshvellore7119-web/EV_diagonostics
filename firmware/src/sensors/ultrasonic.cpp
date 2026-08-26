@@ -58,14 +58,14 @@ void ultrasonic_sample(UltrasonicData *data) {
   }
 
   if (echoReceived) {
-    data->time_of_fight_us = echoEndTime - echoStartTime;
+    data->time_of_flight_us = echoEndTime - echoStartTime;
     // For simplicity, we'll set amplitude to 1.0 (could be measured via ADC)
     data->amplitude = 1.0;
     // Phase shift would require coherent detection, not implemented here
     data->phase_shift = 0.0;
   } else {
     // Timeout
-    data->time_of_fight_us = 0;
+    data->time_of_flight_us = 0;
     data->amplitude = 0;
     data->phase_shift = 0;
   }
