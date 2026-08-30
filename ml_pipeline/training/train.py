@@ -40,9 +40,9 @@ def train_model(model, train_loader, val_loader, criterion_cls, criterion_reg, o
             soh_labels = batch['soh'].to(device).unsqueeze(1)
 
             optimizer.zero_grad()
-            outputs = model(electrical, ultrasonic, thermal)
+            soh_pred = outputs.get('soh_mean', outputs.get('soh'))
             loss_cls = criterion_cls(outputs['degradation_logits'], degradation_labels)
-            loss_reg = criterion_reg(outputs['soh'], soh_labels)
+            loss_reg = criterion_reg(soh_pred, soh_labels)
             loss = loss_cls + loss_reg
             loss.backward()
             optimizer.step()
@@ -76,8 +76,9 @@ def train_model(model, train_loader, val_loader, criterion_cls, criterion_reg, o
                 soh_labels = batch['soh'].to(device).unsqueeze(1)
 
                 outputs = model(electrical, ultrasonic, thermal)
+                soh_pred_val = outputs.get('soh_mean', outputs.get('soh'))
                 loss_cls = criterion_cls(outputs['degradation_logits'], degradation_labels)
-                loss_reg = criterion_reg(outputs['soh'], soh_labels)
+                loss_reg = criterion_reg(soh_pred_val, soh_labels)
                 loss = loss_cls + loss_reg
 
                 val_loss += loss.item() * electrical.size(0)
@@ -88,7 +89,7 @@ def train_model(model, train_loader, val_loader, criterion_cls, criterion_reg, o
                 all_degradation_labels.extend(degradation_labels.cpu().numpy())
                 all_degradation_preds.extend(predicted.cpu().numpy())
                 all_soh_labels.extend(soh_labels.cpu().numpy().flatten())
-                all_soh_preds.extend(outputs['soh'].cpu().numpy().flatten())
+                all_soh_preds.extend(soh_pred_val.cpu().numpy().flatten())
 
         val_epoch_loss = val_loss / val_total
         val_epoch_acc = val_correct / val_total
@@ -138,7 +139,7 @@ def evaluate_model(model, test_loader, device, degradation_classes):
             all_degradation_preds.extend(predicted.cpu().numpy())
             all_degradation_probs.extend(probs.cpu().numpy())
             all_soh_labels.extend(soh_labels.cpu().numpy().flatten())
-            all_soh_preds.extend(outputs['soh'].cpu().numpy().flatten())
+            all_soh_preds.extend(outputs.get('soh_mean', outputs.get('soh')).cpu().numpy().flatten())
 
     # Classification metrics
     print("\n=== Degradation Mode Classification ===")

@@ -6,6 +6,13 @@ Final verification for EV Battery Diagnostic System
 import os
 import sys
 
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+def check_file_exists(path):
+    """Check if file exists and return status, cwd-independent"""
+    abs_path = os.path.join(PROJECT_ROOT, path) if not os.path.isabs(path) else path
+    return os.path.exists(abs_path)
+
 def check_matlab_task():
     """Verify Task 1: MATLAB/Simulink Digital Twin (ACE-OPI)"""
     print("Checking Task 1: MATLAB/Simulink Digital Twin (ACE-OPI)...")
@@ -19,7 +26,7 @@ def check_matlab_task():
         "matlab_simulink_demo/scripts/generate_idp_report_plots.m",
         "matlab_simulink_demo/validation/compare_with_python_digital_twin.m"
     ]
-    missing = [f for f in files if not os.path.exists(f)]
+    missing = [f for f in files if not check_file_exists(f)]
     if not missing:
         print("  PASS: All ACE-OPI MATLAB files present")
         return True
@@ -40,12 +47,12 @@ def check_python_task():
         "ev_cell_multimodal_sim/dashboard/pages/live_diagnostic.py",
         "ev_cell_multimodal_sim/dashboard/pages/scenario_lab.py"
     ]
-    missing = [f for f in files if not os.path.exists(f)]
+    missing = [f for f in files if not check_file_exists(f)]
     if not missing:
         print("  PASS: All Python simulation files present")
         # Try to import and test fusion network
         try:
-            sys.path.insert(0, "ev_cell_multimodal_sim")
+            sys.path.insert(0, os.path.join(PROJECT_ROOT, "ev_cell_multimodal_sim"))
             from models.fusion_net import MultiBranchFusionNet
             import torch
             model = MultiBranchFusionNet(seq_length=10)
@@ -66,7 +73,7 @@ def check_sibling_task():
         "docs/GAZEBO_INTEGRATION.md",
         "docs/patent_claims.md"
     ]
-    missing = [f for f in files if not os.path.exists(f)]
+    missing = [f for f in files if not check_file_exists(f)]
     if not missing:
         print("  PASS: System architecture & integration documentation present")
         return True
@@ -83,7 +90,7 @@ def check_hardware_task():
         "hardware/mechanical/transducer_mounting.md",
         "hardware/bom/bom.csv"
     ]
-    missing = [f for f in files if not os.path.exists(f)]
+    missing = [f for f in files if not check_file_exists(f)]
     if not missing:
         print("  PASS: All hardware documentation files present")
         return True
@@ -103,12 +110,12 @@ def check_backend_task():
         "host_application/src/main.py",
         "host_application/src/__init__.py"
     ]
-    missing = [f for f in files if not os.path.exists(f)]
+    missing = [f for f in files if not check_file_exists(f)]
     if not missing:
         print("  PASS: All host application refactor files present")
         # Try to test logger
         try:
-            sys.path.insert(0, "host_application/src")
+            sys.path.insert(0, os.path.join(PROJECT_ROOT, "host_application", "src"))
             from logger import get_logger
             logger = get_logger(__name__)
             print("  PASS: Logger module works correctly")

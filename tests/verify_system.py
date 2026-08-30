@@ -7,9 +7,12 @@ Checks that all five tasks have been properly implemented
 import os
 import sys
 
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 def check_file_exists(path):
-    """Check if file exists and return status"""
-    return os.path.exists(path)
+    """Check if file exists and return status, cwd-independent"""
+    abs_path = os.path.join(PROJECT_ROOT, path) if not os.path.isabs(path) else path
+    return os.path.exists(abs_path)
 
 def check_matlab_task():
     """Verify Task 1: MATLAB/Simulink Digital Twin (ACE-OPI)"""
@@ -50,7 +53,7 @@ def check_python_task():
         print("  PASS: All Python simulation files present")
         # Try to import and test fusion network
         try:
-            sys.path.insert(0, "ev_cell_multimodal_sim")
+            sys.path.insert(0, os.path.join(PROJECT_ROOT, "ev_cell_multimodal_sim"))
             from models.fusion_net import MultiBranchFusionNet
             import torch
             model = MultiBranchFusionNet(seq_length=10)
@@ -113,7 +116,7 @@ def check_backend_task():
         print("  PASS: All host application refactor files present")
         # Try to test logger
         try:
-            sys.path.insert(0, "host_application/src")
+            sys.path.insert(0, os.path.join(PROJECT_ROOT, "host_application", "src"))
             from logger import get_logger
             logger = get_logger(__name__)
             print("  PASS: Logger module works correctly")

@@ -62,7 +62,10 @@ class MultiBranchFusionNet(nn.Module):
         self.thermal_branch = _FeatureExtractorWithUncertainty(in_channels=1, out_features=128)
 
         # Post-fusion processing dimension
-        self.fusion_dim = 128
+        if self.fusion_type == 'concat':
+            self.fusion_dim = 128 * 3
+        else:
+            self.fusion_dim = 128
 
         # Shared post-fusion processing
         self.fusion_fc = nn.Sequential(
@@ -102,23 +105,20 @@ class MultiBranchFusionNet(nn.Module):
         feat_u, prec_u = self.ultrasonic_branch(ultrasonic)  # (B, 128), (B, 128)
         feat_t, prec_t = self.thermal_branch(thermal)        # (B, 128), (B, 128)
 
-        # Confidence-weighted attention fusion
-        # Stack features and precisions
-        # Features: (B, 3, 128)
-        stacked_features = torch.stack([feat_e, feat_u, feat_t], dim=1)
-        # Precisions: (B, 3, 128)
-        stacked_precisions = torch.stack([prec_e, prec_u, prec_t], dim=1)
+        if self.fusion_type == 'concat':
+            fused = torch.cat([feat_e, feat_u, feat_t], dim=1)
+        elif self.fusion_type == 'add':
+            fused = feat_e + feat_u + feat_t
+        else:
+            # Confidence-weighted attention fusion
+            # Stack features and precisions
+            stacked_features = torch.stack([feat_e, feat_u, feat_t], dim=1)
+            stacked_precisions = torch.stack([prec_e, prec_u, prec_t], dim=1)
 
-        # Compute attention weights based on precision
-        # Average precision across feature dimension to get modality-level confidence
-        modality_confidence = torch.mean(stacked_precisions, dim=2)  # (B, 3)
-        # Apply softmax to get weights
-        modality_weights = F.softmax(modality_confidence, dim=1)    # (B, 3)
-        # Reshape for broadcasting: (B, 3, 1)
-        modality_weights = modality_weights.unsqueeze(2)
-
-        # Weighted sum of features
-        fused = torch.sum(stacked_features * modality_weights, dim=1)  # (B, 128)
+            # Compute attention weights based on precision
+            modality_confidence = torch.mean(stacked_precisions, dim=2)  # (B, 3)
+            modality_weights = F.softmax(modality_confidence, dim=1).unsqueeze(2)  # (B, 3, 1)
+            fused = torch.sum(stacked_features * modality_weights, dim=1)  # (B, 128)
 
         # Post-fusion processing
         features = self.fusion_fc(fused)  # (B, 128)
