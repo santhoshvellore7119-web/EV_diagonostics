@@ -40,6 +40,7 @@ def train_model(model, train_loader, val_loader, criterion_cls, criterion_reg, o
             soh_labels = batch['soh'].to(device).unsqueeze(1)
 
             optimizer.zero_grad()
+            outputs = model(electrical, ultrasonic, thermal)
             soh_pred = outputs.get('soh_mean', outputs.get('soh'))
             loss_cls = criterion_cls(outputs['degradation_logits'], degradation_labels)
             loss_reg = criterion_reg(soh_pred, soh_labels)
@@ -143,29 +144,31 @@ def evaluate_model(model, test_loader, device, degradation_classes):
 
     # Classification metrics
     print("\n=== Degradation Mode Classification ===")
-    print(classification_report(all_degradation_labels, all_degradation_preds, target_names=degradation_classes))
-    cm = confusion_matrix(all_degradation_labels, all_degradation_preds)
+    labels_list = list(range(len(degradation_classes)))
+    print(classification_report(all_degradation_labels, all_degradation_preds, labels=labels_list, target_names=degradation_classes, zero_division=0))
+    cm = confusion_matrix(all_degradation_labels, all_degradation_preds, labels=labels_list)
     print("Confusion Matrix:")
     print(cm)
 
     # ROC-AUC (one-vs-rest)
+    roc_auc_val = None
     try:
-        roc_auc = roc_auc_score(all_degradation_labels, all_degradation_probs, multi_class='ovr')
-        print(f"ROC-AUC (OvR): {roc_auc:.4f}")
+        roc_auc_val = float(roc_auc_score(all_degradation_labels, all_degradation_probs, multi_class='ovr', labels=labels_list))
+        print(f"ROC-AUC (OvR): {roc_auc_val:.4f}")
     except Exception as e:
         print(f"ROC-AUC calculation failed: {e}")
 
     # Regression metrics
-    soh_mse = np.mean((np.array(all_soh_labels) - np.array(all_soh_preds)) ** 2)
-    soh_mae = np.mean(np.abs(np.array(all_soh_labels) - np.array(all_soh_preds)))
+    soh_mse = float(np.mean((np.array(all_soh_labels) - np.array(all_soh_preds)) ** 2))
+    soh_mae = float(np.mean(np.abs(np.array(all_soh_labels) - np.array(all_soh_preds))))
     print("\n=== SOH Regression ===")
     print(f"MSE: {soh_mse:.4f}")
     print(f"MAE: {soh_mae:.4f}")
 
     return {
-        'classification_report': classification_report(all_degradation_labels, all_degradation_preds, target_names=degradation_classes, output_dict=True),
+        'classification_report': classification_report(all_degradation_labels, all_degradation_preds, labels=labels_list, target_names=degradation_classes, output_dict=True, zero_division=0),
         'confusion_matrix': cm.tolist(),
-        'roc_auc': roc_auc if 'roc_auc' in locals() else None,
+        'roc_auc': roc_auc_val,
         'soh_mse': soh_mse,
         'soh_mae': soh_mae
     }
@@ -307,10 +310,19 @@ def main():
         'feature_importance': {k: v.tolist() for k, v in importance.items()}
     }
 
+    def json_serializer(obj):
+        if isinstance(obj, (np.integer, int)):
+            return int(obj)
+        elif isinstance(obj, (np.floating, float)):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return str(obj)
+
     os.makedirs('results', exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     with open(f'results/training_results_{timestamp}.json', 'w') as f:
-        json.dump(results, f, indent=2)
+        json.dump(results, f, indent=2, default=json_serializer)
 
     # Plot training history
     plt.figure(figsize=(12, 4))
