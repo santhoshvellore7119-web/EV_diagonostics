@@ -1,0 +1,413 @@
+"""
+Main FastAPI application for the Unified Diagnostic Dashboard.
+Provides REST API endpoints and WebSocket streaming for DiagnosticFrame data.
+Using lifespan handlers instead of deprecated on_startup/on_shutdown.
+"""
+
+import asyncio
+import json
+import uuid
+from datetime import datetime
+from typing import Dict, List, Optional, AsyncContextManager
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import numpy as np
+from contextlib import asynccontextmanager
+
+# Import ingestors - handle both module and script execution
+try:
+    # When used as a module (e.g., via uvicorn)
+    from .ingest.threed import ThreedIngestor
+    from .ingest.gazebo import GazeboIngestor
+except ImportError:
+    # When run as a script
+    from ingest.threed import ThreedIngestor
+    from ingest.gazebo import GazeboIngestor
+
+# For now, we'll use a simple in-memory buffer. Later we'll replace with a proper buffer.
+class FrameBuffer:
+    def __init__(self, max_size: int = 1000):
+        self.max_size = max_size
+        self.buffer: List[Dict] = []
+
+    def add(self, frame: Dict):
+        """Add a frame to the buffer, maintaining max size."""
+        self.buffer.append(frame)
+        if len(self.buffer) > self.max_size:
+            self.buffer.pop(0)
+
+    def get_latest(self) -> Optional[Dict]:
+        """Get the most recent frame."""
+        return self.buffer[-1] if self.buffer else None
+
+    def get_historical(self, start: int = 0, end: Optional[int] = None) -> List[Dict]:
+        """Get historical frames by index."""
+        if end is None:
+            end = len(self.buffer)
+        return self.buffer[start:end]
+
+# Global instances
+frame_buffer = FrameBuffer(max_size=10000)
+connected_websockets: List[WebSocket] = []
+
+# Ingestor instances
+live_ingestor = None  # Would connect to actual hardware
+simulink_ingestor = None  # Would connect to Simulink FMU
+threed_ingestor = ThreedIngestor()  # Existing 3D simulation
+gazebo_ingestor = GazeboIngestor()  # New Gazebo/ROS 2 integration
+
+# Active ingestor
+active_ingestor = threed_ingestor  # Default to 3D simulation
+active_mode = "3d"
+
+# Lifespan context manager for startup/shutdown events
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: begin the data simulation
+    print("Starting diagnostic data simulation")
+    # Start the simulation task
+    simulation_task = asyncio.create_task(simulate_data())
+    yield
+    # Shutdown: cancel the simulation task
+    simulation_task.cancel()
+    try:
+        await simulation_task
+    except asyncio.CancelledError:
+        pass
+    # Cleanup ingestors
+    if hasattr(threed_ingestor, 'cleanup'):
+        await threed_ingestor.cleanup()
+    if hasattr(gazebo_ingestor, 'cleanup'):
+        await gazebo_ingestor.cleanup()
+    print("Stopped diagnostic data simulation")
+
+# Patch to fix Starlette/FastAPI compatibility issue
+import sys
+from fastapi.routing import APIRouter
+
+# Store original init
+_original_api_router_init = APIRouter.__init__
+
+def _patched_api_router_init(self, *,
+                     prefix="",
+                     tags=None,
+                     dependencies=None,
+                     default_response_class=None,
+                     responses=None,
+                     callbacks=None,
+                     routes=None,
+                     redirect_slashes=True,
+                     default=None,
+                     dependency_overrides_provider=None,
+                     route_class=None,
+                     on_startup=None,
+                     on_shutdown=None,
+                     lifespan=None,
+                     deprecated=None,
+                     include_in_schema=True,
+                     generate_unique_id_function=None):
+    # Handle defaults as in original
+    if default_response_class is None:
+        from fastapi.responses import JSONResponse
+        default_response_class = JSONResponse
+    if generate_unique_id_function is None:
+        from fastapi.routing import generate_unique_id
+        generate_unique_id_function = generate_unique_id
+
+    # Call super().__init__ with only the parameters that Starlette Router accepts
+    super(APIRouter, self).__init__(
+        routes=routes,
+        redirect_slashes=redirect_slashes,
+        default=default,
+        lifespan=lifespan,
+        # Note: we omit on_startup and on_shutdown as they are not supported by Starlette Router
+    )
+
+    # Now set the attributes as in original
+    if prefix:
+        assert prefix.startswith("/"), "A path prefix must start with '/'"
+        assert not prefix.endswith(
+            "/"
+        ), "A path prefix must not end with '/', as the routes will start with '/'"
+    self.prefix = prefix
+    self.tags = tags or []
+    self.dependencies = list(dependencies or [])
+    self.deprecated = deprecated
+    self.include_in_schema = include_in_schema
+    self.responses = responses or {}
+    self.callbacks = callbacks or []
+    self.dependency_overrides_provider = dependency_overrides_provider
+    self.route_class = route_class or APIRouter
+    from fastapi.routing import APIRoute
+    self.route_class = APIRoute
+    self.default_response_class = default_response_class
+    self.generate_unique_id_function = generate_unique_id_function
+
+# Apply the patch
+APIRouter.__init__ = _patched_api_router_init
+app = FastAPI(title="Unified Diagnostic Dashboard API", version="0.1.0", lifespan=lifespan)
+
+# CORS middleware for frontend development
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, restrict to frontend domain
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Pydantic models for API
+class DiagnosticFrameBase(BaseModel):
+    timestamp: float
+    frameId: str
+    source: str  # 'live', 'simulink', '3d', 'gazebo'
+    cellId: str
+    packId: Optional[str] = None
+
+    # Electrical data
+    electrical_voltage: float
+    electrical_current: float
+    electrical_power: float
+    electrical_resistance: float
+    electrical_uncertainty: float
+
+    # Ultrasonic data
+    ultrasonic_timeOfFlight: float
+    ultrasonic_amplitude: float
+    ultrasonic_phaseShift: float
+    ultrasonic_speedOfSound: float
+    ultrasonic_uncertainty: float
+
+    # Thermal data
+    thermal_temperature: float
+    thermal_tempGradient: float
+    thermal_heatFlux: float
+    thermal_uncertainty: float
+
+    # State of Health
+    stateOfHealth_value: float
+    stateOfHealth_confidenceInterval_lower: float
+    stateOfHealth_confidenceInterval_upper: float
+    stateOfHealth_method: str
+
+    # Degradation classification
+    degradation_mode: str
+    degradation_probability: float
+    degradation_perClass_healthy: float
+    degradation_perClass_li_plating: float
+    degradation_perClass_active_material_loss: float
+    degradation_perClass_electrolyte_decomposition: float
+    degradation_perClass_gas_generation: float
+    degradation_perClass_internal_short: float
+    degradation_entropy: float
+
+    # Rebalancing state
+    rebalancing_state: str
+    rebalancing_selectedAction: str
+    rebalancing_actionReason: str
+    rebalancing_powerStage_targetCurrent: float
+    rebalancing_powerStage_actualCurrent: float
+    rebalancing_powerStage_targetVoltage: float
+    rebalancing_powerStage_actualVoltage: float
+    rebalancing_powerStage_pwmDutyCycle: float
+    rebalancing_executionTime: float
+
+    # Simulation fields (optional)
+    simulation_soc: Optional[float] = None
+    simulation_excitationAmplitude: Optional[float] = None
+    simulation_noiseLevel: Optional[float] = None
+    simulation_stepCount: Optional[int] = None
+
+class DiagnosticFrame(DiagnosticFrameBase):
+    pass
+
+# WebSocket connection manager
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+
+    async def broadcast(self, message: dict):
+        """Broadcast a message to all connected WebSocket clients."""
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(message)
+            except:
+                # Remove broken connections
+                self.active_connections.remove(connection)
+
+manager = ConnectionManager()
+
+# API Endpoints
+@app.get("/")
+async def root():
+    return {"message": "Unified Diagnostic Dashboard API"}
+
+@app.get("/api/frames/latest")
+async def get_latest_frame():
+    """Get the most recent DiagnosticFrame."""
+    latest = frame_buffer.get_latest()
+    if latest is None:
+        raise HTTPException(status_code=404, detail="No frames available")
+    return latest
+
+@app.get("/api/frames/historical")
+async def get_historical_frames(start: int = 0, end: Optional[int] = None):
+    """Get historical frames by index range."""
+    frames = frame_buffer.get_historical(start, end)
+    return {"frames": frames, "count": len(frames)}
+
+@app.post("/api/mode/set")
+async def set_mode(mode: str):
+    """Set the active data source mode (live, simulink, 3d, gazebo)."""
+    global active_ingestor, active_mode
+    valid_modes = ['live', 'simulink', '3d', 'gazebo']
+    if mode not in valid_modes:
+        raise HTTPException(status_code=400, detail=f"Invalid mode. Must be one of {valid_modes}")
+
+    # Switch to the appropriate ingestor
+    if mode == 'live':
+        active_ingestor = live_ingestor
+    elif mode == 'simulink':
+        active_ingestor = simulink_ingestor
+    elif mode == '3d':
+        active_ingestor = threed_ingestor
+    elif mode == 'gazebo':
+        active_ingestor = gazebo_ingestor
+
+    active_mode = mode
+    return {"message": f"Mode set to {mode}", "mode": mode}
+
+# WebSocket endpoint for real-time frame streaming
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            # Keep connection alive and send periodic updates
+            # In a real implementation, we would send new frames as they arrive
+            # For now, we'll send the latest frame every second
+            await asyncio.sleep(1)
+            latest = frame_buffer.get_latest()
+            if latest:
+                await websocket.send_json(latest)
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+    except Exception as e:
+        print(f"WebSocket error: {e}")
+        manager.disconnect(websocket)
+
+# Helper function to simulate incoming data for testing
+async def simulate_data():
+    """Simulate incoming DiagnosticFrame data for testing purposes."""
+    import random
+    import time
+
+    frame_id = 0
+    while True:
+        try:
+            # Get frame from active ingestor
+            if active_ingestor is not None:
+                frame = await active_ingestor.get_frame()
+                if frame is None:
+                    # Fallback to simulation if ingestor fails
+                    frame = _generate_fallback_frame()
+            else:
+                # No ingestor available, use fallback
+                frame = _generate_fallback_frame()
+
+            # Add to buffer and broadcast
+            frame_buffer.add(frame)
+            await manager.broadcast(frame)
+
+            frame_id += 1
+            await asyncio.sleep(0.1)  # 10 Hz update rate
+        except asyncio.CancelledError:
+            # Task was cancelled, break out of the loop
+            break
+        except Exception as e:
+            print(f"Error in simulation: {e}")
+            await asyncio.sleep(1)  # Wait a bit before retrying
+
+def _generate_fallback_frame() -> Dict:
+    """Generate a fallback frame when ingestors are not available."""
+    import random
+    import time
+
+    frame = {
+        "timestamp": time.time(),
+        "frameId": str(uuid.uuid4()),
+        "source": active_mode if active_mode in ['live', 'simulink', '3d', 'gazebo'] else "fallback",
+        "cellId": "cell_001",
+        "packId": "pack_001",
+
+        # Electrical data (simulated)
+        "electrical_voltage": 3.5 + random.uniform(-0.2, 0.2),
+        "electrical_current": 2.0 + random.uniform(-0.5, 0.5),
+        "electrical_power": 0.0,  # Will be calculated
+        "electrical_resistance": 0.05 + random.uniform(-0.01, 0.01),
+        "electrical_uncertainty": 0.01,
+
+        # Ultrasonic data (simulated)
+        "ultrasonic_timeOfFlight": 8.0 + random.uniform(-0.5, 0.5),  # microseconds
+        "ultrasonic_amplitude": 1.0 + random.uniform(-0.2, 0.2),
+        "ultrasonic_phaseShift": 0.0 + random.uniform(-0.1, 0.1),
+        "ultrasonic_speedOfSound": 2500.0 + random.uniform(-100, 100),
+        "ultrasonic_uncertainty": 0.1,
+
+        # Thermal data (simulated)
+        "thermal_temperature": 25.0 + random.uniform(-5, 10),
+        "thermal_tempGradient": 0.1 + random.uniform(-0.05, 0.05),
+        "thermal_heatFlux": 10.0 + random.uniform(-5, 5),
+        "thermal_uncertainty": 0.5,
+
+        # State of Health (simulated)
+        "stateOfHealth_value": 85.0 + random.uniform(-10, 10),
+        "stateOfHealth_confidenceInterval_lower": 80.0,
+        "stateOfHealth_confidenceInterval_upper": 90.0,
+        "stateOfHealth_method": "fusion",
+
+        # Degradation classification (simulated)
+        "degradation_mode": "healthy",
+        "degradation_probability": 0.95,
+        "degradation_perClass_healthy": 0.95,
+        "degradation_perClass_li_plating": 0.01,
+        "degradation_perClass_active_material_loss": 0.01,
+        "degradation_perClass_electrolyte_decomposition": 0.01,
+        "degradation_perClass_gas_generation": 0.01,
+        "degradation_perClass_internal_short": 0.01,
+        "degradation_entropy": 0.1,
+
+        # Rebalancing state (simulated)
+        "rebalancing_state": "idle",
+        "rebalancing_selectedAction": "none",
+        "rebalancing_actionReason": "No action required",
+        "rebalancing_powerStage_targetCurrent": 0.0,
+        "rebalancing_powerStage_actualCurrent": 0.0,
+        "rebalancing_powerStage_targetVoltage": 0.0,
+        "rebalancing_powerStage_actualVoltage": 0.0,
+        "rebalancing_powerStage_pwmDutyCycle": 0.0,
+        "rebalancing_executionTime": 0.0,
+
+        # Simulation fields
+        "simulation_soc": 0.5 + random.uniform(-0.1, 0.1),
+        "simulation_excitationAmplitude": 0.5,
+        "simulation_noiseLevel": 0.1,
+        "simulation_stepCount": frame_id
+    }
+
+    # Calculate power
+    frame["electrical_power"] = frame["electrical_voltage"] * frame["electrical_current"]
+
+    return frame
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
