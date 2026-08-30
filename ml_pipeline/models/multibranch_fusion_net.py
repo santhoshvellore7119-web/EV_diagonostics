@@ -1,5 +1,6 @@
 """
 Multi-branch fusion network for multi-modal battery diagnostic data with enhanced cross-modal attention.
+Now includes uncertainty estimation for State of Health (SOH) predictions.
 """
 
 import torch
@@ -132,6 +133,7 @@ class CrossModalAttention(nn.Module):
 class MultiBranchFusionNet(nn.Module):
     """
     Multi-branch network with separate encoders for each modality and enhanced fusion strategies.
+    Now includes uncertainty estimation for State of Health (SOH) predictions.
     """
 
     def __init__(self, seq_length=256, num_degradation_classes=6, fusion_type='enhanced_attention'):
@@ -179,7 +181,9 @@ class MultiBranchFusionNet(nn.Module):
 
         # Output heads
         self.classification_head = nn.Linear(128, num_degradation_classes)
-        self.regression_head = nn.Linear(128, 1)  # SOH output
+        # For uncertainty estimation, we predict both mean and log variance of SOH
+        self.soh_mean_head = nn.Linear(128, 1)
+        self.soh_logvar_head = nn.Linear(128, 1)
 
     def forward(self, electrical, ultrasonic, thermal):
         """
@@ -191,7 +195,8 @@ class MultiBranchFusionNet(nn.Module):
         Returns:
             dict with keys:
                 'degradation_logits': (B, num_classes)
-                'soh': (B, 1)
+                'soh_mean': (B, 1) - predicted mean SOH
+                'soh_logvar': (B, 1) - predicted log variance of SOH (for uncertainty)
                 'attention_info': dict (only for enhanced_attention fusion type)
         """
         # Extract features from each branch
@@ -225,11 +230,13 @@ class MultiBranchFusionNet(nn.Module):
 
         # Outputs
         degradation_logits = self.classification_head(features)
-        soh = self.regression_head(features)
+        soh_mean = self.soh_mean_head(features)
+        soh_logvar = self.soh_logvar_head(features)  # Log variance for numerical stability
 
         result = {
             'degradation_logits': degradation_logits,
-            'soh': soh
+            'soh_mean': soh_mean,
+            'soh_logvar': soh_logvar
         }
 
         if attention_info is not None:
@@ -240,7 +247,7 @@ class MultiBranchFusionNet(nn.Module):
 
 if __name__ == "__main__":
     # Simple test
-    print("Testing MultiBranchFusionNet with enhanced attention...")
+    print("Testing MultiBranchFusionNet with uncertainty estimation...")
     model = MultiBranchFusionNet(fusion_type='enhanced_attention')
     batch_size = 4
     seq_len = 256
@@ -249,7 +256,8 @@ if __name__ == "__main__":
     dummy_thermal = torch.randn(batch_size, 1, seq_len)
     output = model(dummy_electrical, dummy_ultrasonic, dummy_thermal)
     print("Classification logits shape:", output['degradation_logits'].shape)
-    print("SOH shape:", output['soh'].shape)
+    print("SOH mean shape:", output['soh_mean'].shape)
+    print("SOH logvar shape:", output['soh_logvar'].shape)
     if 'attention_info' in output:
         print("Attention info keys:", list(output['attention_info'].keys()))
         print("Modality weights shape:", output['attention_info']['modality_weights'].shape)

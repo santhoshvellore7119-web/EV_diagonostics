@@ -1,7 +1,6 @@
 """
 State machine for active rebalancing decision engine with personalized recovery actions.
-Enhanced version that personalizes recovery based on degradation severity,
-historical response, and cell-specific characteristics.
+Enhanced version that accepts DiagnosticFrame input and outputs standardized rebalancing commands.
 """
 
 from enum import Enum, auto
@@ -124,6 +123,7 @@ class DecisionEngine:
     Implements the state machine and decision logic for triggering recovery actions.
     Enhanced with personalized recovery actions based on degradation severity,
     historical response, and cell-specific characteristics.
+    Now accepts DiagnosticFrame input and outputs standardized rebalancing commands.
     """
 
     def __init__(self):
@@ -209,11 +209,40 @@ class DecisionEngine:
     def update_ml_results(self, degradation_mode_idx: int, degradation_prob: float, soh: float):
         """
         Update the engine with latest ML inference results.
+        BACKWARD COMPATIBLE METHOD - maintains original interface.
         Args:
             degradation_mode_idx: Index of predicted degradation mode.
             degradation_prob: Probability of the predicted mode.
             soh: Estimated State of Health (0-100).
         """
+        self._update_ml_results_internal(degradation_mode_idx, degradation_prob, soh)
+
+    def update_ml_results_from_frame(self, diagnostic_frame: Dict[str, Any]):
+        """
+        Update the engine with ML results from a DiagnosticFrame object.
+        NEW METHOD - accepts standardized DiagnosticFrame input.
+        Args:
+            diagnostic_frame: Dictionary containing at least:
+                - degradation_mode_idx: int (index of predicted degradation mode)
+                - degradation_prob: float (probability of the predicted mode)
+                - soh: float (estimated State of Health, 0-100)
+                - cell_id: str (optional, identifier for the cell being processed)
+        """
+        # Extract ML results from the DiagnosticFrame
+        degradation_mode_idx = diagnostic_frame.get('degradation_mode_idx', 0)
+        degradation_prob = diagnostic_frame.get('degradation_prob', 0.0)
+        soh = diagnostic_frame.get('soh', 100.0)
+        cell_id = diagnostic_frame.get('cell_id', None)
+
+        # Update internal ML results
+        self._update_ml_results_internal(degradation_mode_idx, degradation_prob, soh)
+
+        # Set cell ID if provided
+        if cell_id:
+            self.set_cell_under_test(cell_id)
+
+    def _update_ml_results_internal(self, degradation_mode_idx: int, degradation_prob: float, soh: float):
+        """Internal method to update ML results."""
         self.ml_results = {
             'degradation_mode': DegradationMode(degradation_mode_idx),
             'degradation_prob': degradation_prob,
@@ -241,7 +270,7 @@ class DecisionEngine:
     def execute(self) -> Dict[str, Any]:
         """
         Execute one step of the state machine.
-        Returns a dictionary with commands for the hardware.
+        Returns a dictionary with STANDARDIZED commands for easy mapping to DiagnosticFrame.
         """
         commands = {
             'state': self.state.name,
@@ -435,13 +464,8 @@ class DecisionEngine:
             self.recovery_start_time is not None and
             self.ml_results):
 
-            soh_before = self.ml_results.get('soh', 0.0)  # This should be the pre-recovery SOH
-            # Actually, we need to store the pre-recovery SOH properly
-            # For now, we'll use a simplified approach
-
-            # In a real implementation, we'd store the pre-recovery SOH when starting recovery
-            # For this enhancement, we'll assume we have access to it
-            soh_before = getattr(self, '_last_pre_recovery_soh', 50.0)  # Placeholder
+            # Get pre-recovery SOH that was stored when starting recovery
+            soh_before = getattr(self, '_last_pre_recovery_soh', self.ml_results.get('soh', 0.0))
 
             soh_improvement = soh_after - soh_before
             success = soh_improvement >= self.soh_improvement_threshold
@@ -489,7 +513,7 @@ class DecisionEngine:
 
 if __name__ == "__main__":
     # Simple test of the enhanced decision engine
-    print("Testing enhanced DecisionEngine with personalized recovery actions...")
+    print("Testing enhanced DecisionEngine with DiagnosticFrame input...")
     engine = DecisionEngine()
 
     # Set some cell characteristics for personalization
@@ -500,16 +524,80 @@ if __name__ == "__main__":
         'nominal_capacity_ah': 3.0
     })
 
-    # Simulate a cycle with recovery
+    # Create a sample DiagnosticFrame for testing
+    sample_frame = {
+        'timestamp': 1000.0,
+        'frameId': 'test_001',
+        'source': 'live',
+        'cellId': 'TEST_CELL_001',
+        'packId': 'TEST_PACK_001',
+        'electrical_voltage': 3.7,
+        'electrical_current': 2.0,
+        'electrical_power': 7.4,
+        'electrical_resistance': 0.05,
+        'electrical_uncertainty': 0.01,
+        'ultrasonic_timeOfFlight': 8.0,
+        'ultrasonic_amplitude': 1.0,
+        'ultrasonic_phaseShift': 0.0,
+        'ultrasonic_speedOfSound': 2500.0,
+        'ultrasonic_uncertainty': 0.1,
+        'thermal_temperature': 25.0,
+        'thermal_tempGradient': 0.1,
+        'thermal_heatFlux': 10.0,
+        'thermal_uncertainty': 0.5,
+        # ML fields
+        'degradation_mode_idx': 1,  # LI_PLATING
+        'degradation_prob': 0.85,
+        'soh': 75.0,
+        'stateOfHealth_value': 75.0,
+        'stateOfHealth_confidenceInterval_lower': 73.0,
+        'stateOfHealth_confidenceInterval_upper': 77.0,
+        'stateOfHealth_method': 'ml',
+        'degradation_mode': 'li_plating',
+        'degradation_probability': 0.85,
+        'degradation_perClass_healthy': 0.05,
+        'degradation_perClass_li_plating': 0.85,
+        'degradation_perClass_active_material_loss': 0.02,
+        'degradation_perClass_electrolyte_decomposition': 0.02,
+        'degradation_perClass_gas_generation': 0.03,
+        'degradation_perClass_internal_short': 0.03,
+        'degradation_entropy': 0.5,
+        # Rebalancing fields (will be updated by engine)
+        'rebalancing_state': 'idle',
+        'rebalancing_selectedAction': 'none',
+        'rebalancing_actionReason': 'Pending',
+        'rebalancing_powerStage_targetCurrent': 0.0,
+        'rebalancing_powerStage_actualCurrent': 0.0,
+        'rebalancing_powerStage_targetVoltage': 0.0,
+        'rebalancing_powerStage_actualVoltage': 0.0,
+        'rebalancing_powerStage_pwmDutyCycle': 0.0,
+        'rebalancing_executionTime': 0.0
+    }
+
+    # Simulate a cycle with recovery using DiagnosticFrame input
     for i in range(15):
         if engine.state == SystemState.IDLE:
-            # Inject some fake ML results after first sensing
+            # Inject some fake ML results after first sensing using DiagnosticFrame input
             if i == 2:
-                engine.update_ml_results(DegradationMode.LI_PLATING.value, 0.85, 75.0)
+                # Update the frame with new ML results
+                sample_frame['degradation_mode_idx'] = 1  # LI_PLATING
+                sample_frame['degradation_prob'] = 0.85
+                sample_frame['soh'] = 75.0
+                sample_frame['degradation_mode'] = 'li_plating'
+                sample_frame['degradation_probability'] = 0.85
+
+                # Use the new DiagnosticFrame input method
+                engine.update_ml_results_from_frame(sample_frame)
                 engine.store_prerecovery_soh(75.0)  # Store pre-recovery SOH
         elif engine.state == SystemState.VERIFYING and i == 8:
             # Simulate post-recovery sensing with improved SOH
-            engine.update_ml_results(DegradationMode.LI_PLATING.value, 0.30, 78.0)  # Improved SOH
+            sample_frame['degradation_mode_idx'] = 1  # Still LI_PLATING but improving
+            sample_frame['degradation_prob'] = 0.30
+            sample_frame['soh'] = 78.0  # Improved SOH
+            sample_frame['degradation_mode'] = 'li_plating'
+            sample_frame['degradation_probability'] = 0.30
+
+            engine.update_ml_results_from_frame(sample_frame)
 
         result = engine.execute()
         if i < 5 or i >= 10:  # Show interesting steps

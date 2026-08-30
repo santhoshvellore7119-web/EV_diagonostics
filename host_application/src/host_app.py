@@ -13,8 +13,10 @@ Refactored to use modular components:
 
 import sys
 import time
+import json
 import numpy as np
-from PyQt5 import QtWidgets, QtCore, QtGui
+import uuid
+from PyQt5 import QtWidgets, QtCore, QtGui, QtWebSockets
 import pyqtgraph as pg
 
 # Import our modular components
@@ -37,11 +39,19 @@ class HostApp(QtWidgets.QMainWindow):
         self.plot_manager = PlotManager()
         self.ml_handler = MLHandler()
 
+        # WebSocket client for sending data to backend
+        self.websocket = QtWebSockets.QWebSocket()
+        self.websocket.connected.connect(self.websocket_connected)
+        self.websocket.disconnected.connect(self.websocket_disconnected)
+        self.websocket.textMessageReceived.connect(self.websocket_message_received)
+        self.websocket.error.connect(self.websocket_error)
+
         # State variables
         self.sensing_active = False
         self.recovery_active = False
         self.last_ui_update = time.time()
         self.ui_update_interval = 0.1  # Update UI max 10 times per second
+        self.websocket_connected_flag = False
 
         # Serial reader
         self.serial_reader = None
@@ -51,7 +61,63 @@ class HostApp(QtWidgets.QMainWindow):
         self.init_plots()
         self.init_connections()
 
+        # Connect to WebSocket server
+        self.connect_to_websocket()
+
         self.logger.info("Host Application initialized successfully")
+
+    def websocket_connected(self):
+        """Called when WebSocket connection is established."""
+        self.logger.info("WebSocket connected to backend")
+        self.websocket_connected_flag = True
+
+    def websocket_disconnected(self):
+        """Called when WebSocket connection is lost."""
+        self.logger.warning("WebSocket disconnected from backend")
+        self.websocket_connected_flag = False
+        # Attempt to reconnect after a delay
+        QtCore.QTimer.singleShot(5000, self.connect_to_websocket)  # Try again in 5 seconds
+
+    def websocket_message_received(self, message):
+        """Called when a message is received from the WebSocket server."""
+        self.logger.debug(f"WebSocket message received: {message}")
+
+    def websocket_error(self, error):
+        """Called when a WebSocket error occurs."""
+        self.logger.error(f"WebSocket error: {error}")
+        self.websocket_connected_flag = False
+
+    def connect_to_websocket(self):
+        """Connect to the WebSocket server."""
+        self.logger.info("Connecting to WebSocket server at ws://localhost:8000/ws")
+        self.websocket.open(QtCore.QUrl("ws://localhost:8000/ws"))
+
+    def closeEvent(self, event):
+        """Handle application close event."""
+        self.logger.info("Application closing")
+
+        # Stop any active processes
+        if self.sensing_active:
+            self.stop_sensing()
+        if self.recovery_active:
+            self.toggle_recovery()
+        if self.data_manager.is_recording:
+            self.data_manager.stop_recording()
+        if self.data_manager.is_playing:
+            self.data_manager.stop_playback()
+
+        # Close WebSocket connection
+        if self.websocket.state() == QtWebSockets.QWebSocket.Open:
+            self.websocket.close()
+
+        # Stop serial reader
+        if self.serial_reader and self.serial_reader.isRunning():
+            self.logger.info("Stopping serial reader")
+            self.serial_reader.stop()
+            self.serial_reader.wait()
+
+        self.logger.info("Application shutting down")
+        event.accept()
 
     def init_ui(self):
         """Initialize the user interface."""
@@ -100,7 +166,7 @@ class HostApp(QtWidgets.QMainWindow):
 
         # Recording controls
         record_group = QtWidgets.QGroupBox("Recording")
-        record_layout = QtWidgets.VBoxLayout()
+        record_layout = QtWidgets.QVBoxLayout()
         self.record_btn = QtWidgets.QPushButton("Start Recording")
         self.record_btn.setCheckable(True)
         self.playback_btn = QtWidgets.QPushButton("Playback")
@@ -268,6 +334,8 @@ class HostApp(QtWidgets.QMainWindow):
             if self.data_manager.stop_playback():
                 self.playback_btn.setText("Playback")
                 self.state_label.setText("Playback Stopped")
+            else:
+                self.logger.error("Failed to stop playback")
         else:
             # Show file dialog to select recording
             from PyQt5.QtWidgets import QFileDialog
@@ -312,6 +380,7 @@ class HostApp(QtWidgets.QMainWindow):
         """
         Callback for incoming serial data.
         Processes packets and updates data buffers and ML results.
+        Also publishes data to WebSocket backend.
         """
         try:
             # Extract timestamp (use packet timestamp if available, otherwise current time)
@@ -362,28 +431,93 @@ class HostApp(QtWidgets.QMainWindow):
                 self.plot_manager.update_plots(time_data, electrical_data, ultrasonic_data, thermal_data)
                 self.last_ui_update = current_time
 
+            # Publish data to WebSocket backend if connected
+            if self.websocket_connected_flag:
+                self.publish_diagnostic_frame(packet, timestamp, electrical_value, ultrasonic_value, thermal_value)
+
         except Exception as e:
             self.logger.error(f"Error processing serial data: {e}", exc_info=True)
 
-    def closeEvent(self, event):
-        """Handle application close event."""
-        self.logger.info("Application closing")
+    def publish_diagnostic_frame(self, packet, timestamp, electrical_value, ultrasonic_value, thermal_value):
+        """
+        Publish a DiagnosticFrame to the WebSocket backend.
 
-        # Stop any active processes
-        if self.sensing_active:
-            self.stop_sensing()
-        if self.recovery_active:
-            self.toggle_recovery()
-        if self.data_manager.is_recording:
-            self.data_manager.stop_recording()
-        if self.data_manager.is_playing:
-            self.data_manager.stop_playback()
+        Args:
+            packet: The raw packet data from serial
+            timestamp: Timestamp in seconds
+            electrical_value: Electrical value (bus voltage)
+            ultrasonic_value: Ultrasonic value (time of flight)
+            thermal_value: Thermal value (temperature)
+        """
+        try:
+            # Create a DiagnosticFrame object
+            frame = {
+                # Timing and identification
+                "timestamp": timestamp,
+                "frameId": str(uuid.uuid4()),
+                "source": "live",
+                "cellId": packet.get('cell_id', "unknown"),
+                "packId": packet.get('pack_id', None),
 
-        # Stop serial reader
-        if self.serial_reader and self.serial_reader.isRunning():
-            self.logger.info("Stopping serial reader")
-            self.serial_reader.stop()
-            self.serial_reader.wait()
+                # Electrical data
+                "electrical_voltage": electrical_value,  # bus_voltage_v
+                "electrical_current": packet.get('electrical', {}).get('bus_current_a', 0.0),
+                "electrical_power": packet.get('electrical', {}).get('bus_power_w', 0.0),
+                "electrical_resistance": packet.get('electrical', {}).get('bus_resistance_ohm', 0.0),
+                "electrical_uncertainty": packet.get('electrical', {}).get('bus_voltage_uncertainty_v', 0.01),
 
-        self.logger.info("Application shutting down")
-        event.accept()
+                # Ultrasonic data
+                "ultrasonic_timeOfFlight": ultrasonic_value / 1e6,  # Convert microseconds to seconds
+                "ultrasonic_amplitude": packet.get('ultrasonic', {}).get('amplitude_v', 0.0),
+                "ultrasonic_phaseShift": packet.get('ultrasonic', {}).get('phase_shift_deg', 0.0),
+                "ultrasonic_speedOfSound": packet.get('ultrasonic', {}).get('speed_of_sound_m_per_s', 2500.0),
+                "ultrasonic_uncertainty": packet.get('ultrasonic', {}).get('time_of_flight_uncertainty_us', 0.1) / 1e6,
+
+                # Thermal data
+                "thermal_temperature": thermal_value,
+                "thermal_tempGradient": packet.get('thermal', {}).get('temp_gradient_c_per_mm', 0.0),
+                "thermal_heatFlux": packet.get('thermal', {}).get('heat_flux_w_per_m2', 0.0),
+                "thermal_uncertainty": packet.get('thermal', {}).get('temperature_uncertainty_c', 0.5),
+
+                # State of Health - from ML results if available
+                "stateOfHealth_value": self.ml_handler.get_ml_results().get('soh', 0.0),
+                "stateOfHealth_confidenceInterval_lower": self.ml_handler.get_ml_results().get('soh_lower', 0.0),
+                "stateOfHealth_confidenceInterval_upper": self.ml_handler.get_ml_results().get('soh_upper', 0.0),
+                "stateOfHealth_method": "ml",
+
+                # Degradation classification - from ML results if available
+                "degradation_mode": self.ml_handler.get_ml_results().get('mode', 'unknown'),
+                "degradation_probability": self.ml_handler.get_ml_results().get('probability', 0.0),
+                "degradation_perClass_healthy": self.ml_handler.get_ml_results().get('per_class_healthy', 0.0),
+                "degradation_perClass_li_plating": self.ml_handler.get_ml_results().get('per_class_li_plating', 0.0),
+                "degradation_perClass_active_material_loss": self.ml_handler.get_ml_results().get('per_class_active_material_loss', 0.0),
+                "degradation_perClass_electrolyte_decomposition": self.ml_handler.get_ml_results().get('per_class_electrolyte_decomposition', 0.0),
+                "degradation_perClass_gas_generation": self.ml_handler.get_ml_results().get('per_class_gas_generation', 0.0),
+                "degradation_perClass_internal_short": self.ml_handler.get_ml_results().get('per_class_internal_short', 0.0),
+                "degradation_entropy": self.ml_handler.get_ml_results().get('entropy', 0.0),
+
+                # Rebalancing state - placeholder values, would be updated by backend processing
+                "rebalancing_state": "idle",
+                "rebalancing_selectedAction": "none",
+                "rebalancing_actionReason": "Waiting for backend processing",
+                "rebalancing_powerStage_targetCurrent": 0.0,
+                "rebalancing_powerStage_actualCurrent": 0.0,
+                "rebalancing_powerStage_targetVoltage": 0.0,
+                "rebalancing_powerStage_actualVoltage": 0.0,
+                "rebalancing_powerStage_pwmDutyCycle": 0.0,
+                "rebalancing_executionTime": 0.0,
+
+                # Simulation fields (not applicable for live data)
+                "simulation_soc": None,
+                "simulation_excitationAmplitude": None,
+                "simulation_noiseLevel": None,
+                "simulation_stepCount": None
+            }
+
+            # Send the frame as JSON over WebSocket
+            if self.websocket.state() == QtWebSockets.QWebSocket.Open:
+                self.websocket.sendTextMessage(json.dumps(frame))
+                self.logger.debug(f"Published DiagnosticFrame to WebSocket: {frame['frameId']}")
+
+        except Exception as e:
+            self.logger.error(f"Error publishing DiagnosticFrame: {e}", exc_info=True)

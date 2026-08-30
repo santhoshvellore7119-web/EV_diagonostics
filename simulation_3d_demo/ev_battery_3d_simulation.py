@@ -31,6 +31,9 @@ class EVBattery3DSimulator:
         self.noise_level = 0.1
         self.excitation_amplitude = 0.5
 
+        # Simulation step counter for data sequencing
+        self._step_count = 0
+
         # Initialize simulation
         self.fig = plt.figure(figsize=(14, 9))
         self.fig.suptitle('Low-Cost Multi-Modal Diagnostic and Active Cell-Rebalancing System',
@@ -489,6 +492,33 @@ class EVBattery3DSimulator:
         ]
 
         self.param_text.set_text('\n'.join(param_lines))
+
+    # Data interface methods for ingestor
+    def get_simulation_state(self):
+        """
+        Get the current simulation state for data ingestion.
+        Returns a dictionary with all parameters needed by the ingestor.
+        """
+        # Increment step counter
+        self._step_count += 1
+
+        return {
+            'soc': self.soc,
+            'degradation_mode': self.degradation_mode,
+            'noise_level': self.noise_level,
+            'excitation_amplitude': self.excitation_amplitude,
+            'step_count': self._step_count,
+            'timestamp': self._get_timestamp() if hasattr(self, '_last_timestamp') else None
+        }
+
+    def _get_timestamp(self):
+        """Get current timestamp - placeholder for actual timing"""
+        import time
+        return time.time()
+
+    def get_sensor_readings(self):
+        """Get current sensor readings - wrapper for compute_sensor_readings"""
+        return self.compute_sensor_readings()
 
     def run(self):
         """Start the simulation"""
