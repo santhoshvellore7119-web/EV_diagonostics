@@ -6,8 +6,9 @@ Quick test to verify the enhanced decision engine can be imported and instantiat
 import sys
 import os
 
-# Add the current directory to path
-sys.path.insert(0, os.path.dirname(__file__))
+# Add the project root directory to path
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
 
 try:
     from active_rebalancing.decision_engine.state_machine import DecisionEngine, SystemState, DegradationMode, RecoveryAction

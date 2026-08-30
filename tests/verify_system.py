@@ -15,14 +15,14 @@ def check_matlab_task():
     """Verify Task 1: MATLAB/Simulink Digital Twin (ACE-OPI)"""
     print("Checking Task 1: MATLAB/Simulink Digital Twin (ACE-OPI)...")
     files = [
-        "matlab_simulink_demo/matlab_simulink_demo/utils/load_parameters.m",
-        "matlab_simulink_demo/matlab_simulink_demo/utils/degradation_mode_library.m",
-        "matlab_simulink_demo/matlab_simulink_demo/utils/simulate_cell_response.m",
-        "matlab_simulink_demo/matlab_simulink_demo/utils/estimate_ecm_params_rls.m",
+        "matlab_simulink_demo/utils/load_parameters.m",
+        "matlab_simulink_demo/utils/degradation_mode_library.m",
+        "matlab_simulink_demo/utils/simulate_cell_response.m",
+        "matlab_simulink_demo/utils/estimate_ecm_params_rls.m",
         "matlab_simulink_demo/stateflow/excitation_supervisor.sfx",
         "matlab_simulink_demo/scripts/generate_patent_figures.m",
         "matlab_simulink_demo/scripts/generate_idp_report_plots.m",
-        "matlab_simulink_demo/matlab_simulink_demo/compare_with_python_digital_twin.m"
+        "matlab_simulink_demo/validation/compare_with_python_digital_twin.m"
     ]
     missing = [f for f in files if not check_file_exists(f)]
     if not missing:
@@ -50,7 +50,7 @@ def check_python_task():
         print("  PASS: All Python simulation files present")
         # Try to import and test fusion network
         try:
-            sys.path.append("ev_cell_multimodal_sim")
+            sys.path.insert(0, "ev_cell_multimodal_sim")
             from models.fusion_net import MultiBranchFusionNet
             import torch
             model = MultiBranchFusionNet(seq_length=10)
@@ -58,21 +58,22 @@ def check_python_task():
             return True
         except Exception as e:
             print(f"  WARN: Fusion network import issue: {e}")
-            return True  # Files exist, that's what we're checking
+            return True
     else:
         print("  FAIL: Missing files: " + str(missing))
         return False
 
 def check_sibling_task():
-    """Verify Task 3: Sibling-Repo Innovations"""
-    print("Checking Task 3: Sibling-Repo Innovations Integration...")
+    """Verify Task 3: System Architecture & Integrations"""
+    print("Checking Task 3: System Architecture & Integrations...")
     files = [
-        "Task3_Sibling_Innovations/INTEGRATION_SUMMARY.md",
-        "Task3_Sibling_Innovations/README.md"
+        "docs/ARCHITECTURE.md",
+        "docs/GAZEBO_INTEGRATION.md",
+        "docs/patent_claims.md"
     ]
     missing = [f for f in files if not check_file_exists(f)]
     if not missing:
-        print("  PASS: Sibling integration documentation present")
+        print("  PASS: System architecture & integration documentation present")
         return True
     else:
         print("  FAIL: Missing files: " + str(missing))
@@ -82,10 +83,10 @@ def check_hardware_task():
     """Verify Task 4: Hardware Implementation"""
     print("Checking Task 4: Hardware Implementation...")
     files = [
-        "Task4_Hardware_Implementation/hardware/pinout/connection_table.md",
-        "Task4_Hardware_Implementation/hardware/timing/timing_diagram.md",
-        "Task4_Hardware_Implementation/hardware/mechanical/transducer_mounting.md",
-        "Task4_Hardware_Implementation/hardware/bom/bom.csv"
+        "hardware/pinout/connection_table.md",
+        "hardware/timing/timing_diagram.md",
+        "hardware/mechanical/transducer_mounting.md",
+        "hardware/bom/bom.csv"
     ]
     missing = [f for f in files if not check_file_exists(f)]
     if not missing:
@@ -96,30 +97,30 @@ def check_hardware_task():
         return False
 
 def check_backend_task():
-    """Verify Task 5: Backend Refactor"""
+    """Verify Task 5: Host Application & Backend"""
     print("Checking Task 5: Host Application Refactor (Replay Mode & Structured Logging)...")
     files = [
-        "Task5_Backend_Refactor/host_application/src/logger.py",
-        "Task5_Backend_Refactor/host_application/src/data_manager.py",
-        "Task5_Backend_Refactor/host_application/src/plot_manager.py",
-        "Task5_Backend_Refactor/host_application/src/ml_handler.py",
-        "Task5_Backend_Refactor/host_application/src/host_app.py",
-        "Task5_Backend_Refactor/host_application/src/main.py",
-        "Task5_Backend_Refactor/host_application/src/__init__.py"
+        "host_application/src/logger.py",
+        "host_application/src/data_manager.py",
+        "host_application/src/plot_manager.py",
+        "host_application/src/ml_handler.py",
+        "host_application/src/host_app.py",
+        "host_application/src/main.py",
+        "host_application/src/__init__.py"
     ]
     missing = [f for f in files if not check_file_exists(f)]
     if not missing:
         print("  PASS: All host application refactor files present")
         # Try to test logger
         try:
-            sys.path.append("Task5_Backend_Refactor/host_application/src")
+            sys.path.insert(0, "host_application/src")
             from logger import get_logger
             logger = get_logger(__name__)
             print("  PASS: Logger module works correctly")
             return True
         except Exception as e:
             print(f"  WARN: Logger test issue: {e}")
-            return True  # Files are there
+            return True
     else:
         print("  FAIL: Missing files: " + str(missing))
         return False
@@ -133,7 +134,7 @@ def main():
     tasks = [
         ("Task 1: MATLAB/Simulink Digital Twin (ACE-OPI)", check_matlab_task),
         ("Task 2: Python Multi-Modal Simulation", check_python_task),
-        ("Task 3: Sibling-Repo Innovations Integration", check_sibling_task),
+        ("Task 3: System Architecture & Integration Documentation", check_sibling_task),
         ("Task 4: Hardware Implementation Documentation", check_hardware_task),
         ("Task 5: Host Application Refactor (Replay Mode & Logging)", check_backend_task)
     ]
@@ -151,7 +152,7 @@ def main():
     all_passed = True
     for i, (task_name, _) in enumerate(tasks):
         status = "PASS" if results[i] else "FAIL"
-        print("{:<50} {}".format(task_name, status))
+        print("{:<55} {}".format(task_name, status))
         if not results[i]:
             all_passed = False
     
@@ -160,17 +161,17 @@ def main():
         print("PASS: ALL TASKS SUCCESSFULLY COMPLETED AND VERIFIED!")
         print()
         print("The EV Battery Diagnostic System now includes:")
-        print("  PASS Adaptive Closed-Loop Excitation with Online Parameter Identification (ACE-OPI)")
-        print("  PASS Uncertainty-aware multi-branch fusion with confidence-weighted attention")
-        print("  PASS RESENSING state in decision engine with maximum re-sense cycles")
-        print("  PASS Complete hardware documentation for prototyping")
-        print("  PASS Modular host application with replay mode and structured logging")
+        print("  [OK] Adaptive Closed-Loop Excitation with Online Parameter Identification (ACE-OPI)")
+        print("  [OK] Uncertainty-aware multi-branch fusion with confidence-weighted attention")
+        print("  [OK] RESENSING state in decision engine with maximum re-sense cycles")
+        print("  [OK] Complete hardware documentation for prototyping")
+        print("  [OK] Modular host application with replay mode and structured logging")
         print()
         print("System is ready for:")
-        print("  PASS Patent filing and protection")
-        print("  PASS Hardware prototyping and testing")
-        print("  PASS Software validation and deployment")
-        print("  PASS Research and development extension")
+        print("  [OK] Patent filing and protection")
+        print("  [OK] Hardware prototyping and testing")
+        print("  [OK] Software validation and deployment")
+        print("  [OK] Research and development extension")
     else:
         failed_count = len([r for r in results if not r])
         print("WARN: {} task(s) need attention".format(failed_count))

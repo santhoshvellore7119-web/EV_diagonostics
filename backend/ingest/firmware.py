@@ -11,8 +11,13 @@ import uuid
 import random
 from datetime import datetime
 from typing import Optional, Dict, Any
-import serial  # pySerial for serial communication
-import serial.tools.list_ports
+try:
+    import serial  # pySerial for serial communication
+    import serial.tools.list_ports
+    SERIAL_AVAILABLE = True
+except ImportError:
+    serial = None
+    SERIAL_AVAILABLE = False
 
 # For now, we'll simulate if serial is not available or not configured.
 # In a real implementation, we would read from the host application's data manager
@@ -28,6 +33,11 @@ class FirmwareIngestor:
 
     async def connect(self):
         """Connect to the serial port."""
+        if not SERIAL_AVAILABLE:
+            print("pySerial not installed. Using simulated firmware data.")
+            self.is_connected = False
+            return
+
         if self.port is None:
             # Auto-detect ESP32 port
             ports = serial.tools.list_ports.comports()

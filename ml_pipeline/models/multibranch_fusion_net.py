@@ -235,6 +235,7 @@ class MultiBranchFusionNet(nn.Module):
 
         result = {
             'degradation_logits': degradation_logits,
+            'soh': soh_mean,
             'soh_mean': soh_mean,
             'soh_logvar': soh_logvar
         }

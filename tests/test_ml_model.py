@@ -7,7 +7,9 @@ import sys
 import os
 
 # Add the ml_pipeline directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'ml_pipeline'))
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(project_root, 'ml_pipeline'))
+sys.path.insert(0, project_root)
 
 try:
     from models.multibranch_fusion_net import MultiBranchFusionNet

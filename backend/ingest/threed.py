@@ -49,7 +49,7 @@ class ThreedIngestor:
             return
 
         try:
-            self.simulator = EVBattery3DSimulator()
+            self.simulator = EVBattery3DSimulator(headless=True)
             # Set initial parameters
             await self.set_parameters(
                 soc=self.soc,

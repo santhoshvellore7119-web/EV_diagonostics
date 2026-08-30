@@ -4,9 +4,14 @@ Initializes and runs the application with all components properly connected.
 """
 
 import sys
-from PyQt5 import QtWidgets
-from .host_app import HostApp
-from .logger import setup_logger, get_logger
+import os
+
+try:
+    from .host_app import HostApp
+    from .logger import setup_logger, get_logger
+except (ImportError, ValueError):
+    from host_app import HostApp
+    from logger import setup_logger, get_logger
 
 
 def main():

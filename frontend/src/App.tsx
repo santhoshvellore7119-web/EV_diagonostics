@@ -1,7 +1,6 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
 import { RootState } from './store';
-import { DiagnosticFrame } from './store/diagnosticFrameSlice';
 import LiveView from './components/views/LiveView';
 import SimulinkView from './components/views/SimulinkView';
 import ThreeDView from './components/views/ThreeDView';

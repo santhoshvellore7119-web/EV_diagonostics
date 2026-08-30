@@ -46,13 +46,15 @@ class MultiBranchFusionNet(nn.Module):
     Fusion uses precision-weighted attention: higher precision -> higher weight.
     """
 
-    def __init__(self, seq_length, num_degradation_classes=6):
+    def __init__(self, seq_length, num_degradation_classes=6, fusion_type='uncertainty_attention', **kwargs):
         """
         Args:
             seq_length (int): Length of input sequences.
             num_degradation_classes (int): Number of degradation mode classes.
+            fusion_type (str): Fusion mode.
         """
         super(MultiBranchFusionNet, self).__init__()
+        self.fusion_type = fusion_type
 
         # Modality-specific branches with uncertainty estimation
         self.electrical_branch = _FeatureExtractorWithUncertainty(in_channels=1, out_features=128)
@@ -89,6 +91,7 @@ class MultiBranchFusionNet(nn.Module):
         Returns:
             dict with keys:
                 'degradation_logits': (B, num_classes)
+                'soh': (B, 1) - predicted SOH mean
                 'soh_mean': (B, 1) - predicted SOH mean
                 'soh_var': (B, 1) - predicted SOH variance
                 'modality_precisions': dict with precision for each modality
@@ -117,12 +120,6 @@ class MultiBranchFusionNet(nn.Module):
         # Weighted sum of features
         fused = torch.sum(stacked_features * modality_weights, dim=1)  # (B, 128)
 
-        # Alternative: Feature-wise precision weighting
-        # Compute weights per feature dimension
-        # modality_weights_expanded = modality_weights.unsqueeze(2)  # (B, 3, 1)
-        # weighted_features = stacked_features * modality_weights_expanded  # (B, 3, 128)
-        # fused = torch.sum(weighted_features, dim=1)  # (B, 128)
-
         # Post-fusion processing
         features = self.fusion_fc(fused)  # (B, 128)
 
@@ -134,6 +131,7 @@ class MultiBranchFusionNet(nn.Module):
 
         return {
             'degradation_logits': degradation_logits,
+            'soh': soh_mean,
             'soh_mean': soh_mean,
             'soh_var': soh_var,
             'modality_precisions': {

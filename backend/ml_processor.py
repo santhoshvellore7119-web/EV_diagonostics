@@ -11,7 +11,7 @@ import json
 import numpy as np
 import torch
 import torch.nn.functional as F
-from typing import Dict, List, Optional, Deque
+from typing import Dict, List, Optional, Deque, Any
 from collections import deque
 import sys
 import os
@@ -155,8 +155,9 @@ class MLProcessor:
 
                 # Calculate SOH uncertainty from log variance
                 # Convert log variance to variance, then to standard deviation
-                soh_variance = np.exp(soh_logvar_value)
+                soh_variance = np.exp(np.clip(soh_logvar_value, -10, 10))
                 soh_std = np.sqrt(soh_variance)
+                soh_mean_value = max(0.0, min(100.0, soh_mean_value))
                 # For confidence interval, we'll use 2 standard deviations (~95% CI)
                 soh_uncertainty = 2.0 * soh_std
                 soh_lower = max(0.0, soh_mean_value - soh_uncertainty)

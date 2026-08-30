@@ -21,9 +21,10 @@ import os
 
 
 class EVBattery3DSimulator:
-    def __init__(self):
+    def __init__(self, headless=False):
         # System parameters
         self.params = self._default_parameters()
+        self.headless = headless
 
         # Current state
         self.soc = 0.5
@@ -34,22 +35,26 @@ class EVBattery3DSimulator:
         # Simulation step counter for data sequencing
         self._step_count = 0
 
-        # Initialize simulation
-        self.fig = plt.figure(figsize=(14, 9))
-        self.fig.suptitle('Low-Cost Multi-Modal Diagnostic and Active Cell-Rebalancing System',
-                          fontsize=14, fontweight='bold')
+        # Initialize simulation GUI if not headless
+        if not headless:
+            self.fig = plt.figure(figsize=(14, 9))
+            self.fig.suptitle('Low-Cost Multi-Modal Diagnostic and Active Cell-Rebalancing System',
+                              fontsize=14, fontweight='bold')
 
-        # Create 3D axis
-        self.ax_3d = self.fig.add_subplot(121, projection='3d')
+            # Create 3D axis
+            self.ax_3d = self.fig.add_subplot(121, projection='3d')
 
-        # Create control panel
-        self.create_controls()
+            # Create control panel
+            self.create_controls()
 
-        # Create status display
-        self.create_status_display()
+            # Create status display
+            self.create_status_display()
 
-        # Initial render
-        self.update_visualization()
+            # Initial render
+            self.update_visualization()
+        else:
+            self.fig = None
+            self.ax_3d = None
 
     def _default_parameters(self):
         """Default system parameters"""
@@ -276,6 +281,9 @@ class EVBattery3DSimulator:
 
     def update_visualization(self):
         """Update the 3D visualization"""
+        if self.headless or self.ax_3d is None:
+            return
+
         # Clear the 3D axis
         self.ax_3d.clear()
 

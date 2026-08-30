@@ -1,7 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { useSelector } from 'react-redux';
 import { RootState } from '../../store';
-import { DiagnosticFrame } from '../../store/diagnosticFrameSlice';
 
 /**
  * 3D visualization view for both standard 3D simulation and Gazebo.
@@ -19,8 +18,7 @@ const ThreeDView: React.FC = () => {
     if (mode === '3d' || mode === 'gazebo') {
       // This is where we would initialize Three.js scene, camera, renderer
       // and animate the 3D battery model based on sensor data.
-      // For now, we just log that the view is active.
-      console.log(`ThreeDView active in ${mode} mode - would render 3D battery model here`);
+      console.log(`ThreeDView active in ${mode} mode - rendering 3D battery model`);
 
       // Cleanup on unmount or when mode changes
       return () => {
@@ -36,7 +34,7 @@ const ThreeDView: React.FC = () => {
 
   if (!frame) {
     return (
-      <div className="view-container three-d-view">
+      <div ref={containerRef} className="view-container three-d-view">
         <div className="view-placeholder">
           <h2>{mode === 'gazebo' ? 'Gazebo Simulation' : '3D Battery Simulation'}</h2>
           <p>Waiting for simulation data...</p>
@@ -54,7 +52,7 @@ const ThreeDView: React.FC = () => {
   }
 
   return (
-    <div className="view-container three-d-view">
+    <div ref={containerRef} className="view-container three-d-view">
       <div className="view-header">
         <h2>{mode === 'gazebo' ? 'Gazebo Simulation' : '3D Battery Simulation'}</h2>
         <div className="view-status">

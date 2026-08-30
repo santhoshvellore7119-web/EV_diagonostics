@@ -1,7 +1,6 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
 import { RootState } from '../../store';
-import { DiagnosticFrame } from '../../store/diagnosticFrameSlice';
 
 const LiveView: React.FC = () => {
   const frame = useSelector((state: RootState) => state.diagnosticFrame.frame);
@@ -64,7 +63,7 @@ const LiveView: React.FC = () => {
           <div className="data-grid">
             <div className="data-item">
               <label>Time of Flight:</label>
-              <span>{(frame.ultrasonic_timeOfFlight * 1e6).toFixed(1)} μs</span>
+              <span>{frame.ultrasonic_timeOfFlight?.toFixed(2)} μs</span>
             </div>
             <div className="data-item">
               <label>Amplitude:</label>
