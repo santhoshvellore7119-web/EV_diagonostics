@@ -1,33 +1,38 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 :root {
-  --bg-primary: #05070a;
-  --bg-glass: rgba(255, 255, 255, 0.04);
-  --bg-glass-card: rgba(255, 255, 255, 0.05);
-  --bg-glass-hover: rgba(255, 255, 255, 0.08);
-  --bg-glass-active: rgba(6, 182, 212, 0.18);
-  --border-glass: rgba(255, 255, 255, 0.1);
-  --border-glass-bright: rgba(255, 255, 255, 0.22);
-  --text-primary: #f8fafc;
-  --text-secondary: rgba(255, 255, 255, 0.7);
-  --text-muted: rgba(255, 255, 255, 0.45);
+  /* Industrial Workstation Palette (Believable, Clean, High Legibility) */
+  --bg-primary: #0e131b;
+  --bg-surface: #151c27;
+  --bg-surface-elevated: #1a2332;
+  --bg-surface-inset: #0a0e14;
+  --bg-hover: #202b3c;
   
-  --accent-cyan: #06b6d4;
-  --accent-cyan-light: #22d3ee;
-  --accent-cyan-glow: rgba(6, 182, 212, 0.4);
-  --accent-blue: #2563eb;
-  --accent-green: #10b981;
-  --accent-green-glow: rgba(16, 185, 129, 0.4);
-  --accent-amber: #f59e0b;
-  --accent-red: #ef4444;
-  --accent-purple: #8b5cf6;
+  --border-subtle: #1e293b;
+  --border-default: #273549;
+  --border-focus: #3b82f6;
 
-  --glass-blur: blur(24px) saturate(180%);
-  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
-  --radius-sm: 8px;
-  --radius-md: 14px;
-  --radius-lg: 20px;
-  --radius-xl: 28px;
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+
+  /* Functional Engineering Accents */
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-success: #16a34a;
+  --color-success-bg: rgba(22, 163, 74, 0.12);
+  --color-warning: #d97706;
+  --color-warning-bg: rgba(217, 119, 6, 0.12);
+  --color-danger: #dc2626;
+  --color-danger-bg: rgba(220, 38, 38, 0.12);
+  --color-info: #0284c7;
+  --color-info-bg: rgba(2, 132, 199, 0.12);
+  --color-purple: #6366f1;
+
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
 }
 
 * {
@@ -41,23 +46,32 @@ html, body {
   width: 100%;
   background-color: var(--bg-primary);
   color: var(--text-primary);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 code, pre, .font-mono, input[type="range"], .timestamp, .frame-id, .soh-value, .data-item span {
-  font-family: 'JetBrains Mono', Consolas, Menlo, Monaco, 'Courier New', monospace;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
 }
 
-/* Custom Scrollbars */
+/* Utilitarian Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--bg-surface-inset);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: var(--radius-xs);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
 }
 
 ::-webkit-scrollbar-thumb {

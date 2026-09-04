@@ -54,15 +54,8 @@ const LineChart: React.FC<LineChartProps> = ({
 
   return (
     <div style={{ width, height, fontFamily: 'inherit' }}>
-      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', overflow: 'visible' }}>
-        <defs>
-          <linearGradient id={`grad-${strokeColor.replace('#', '')}`} x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor={strokeColor} stopOpacity="0.25" />
-            <stop offset="100%" stopColor={strokeColor} stopOpacity="0.0" />
-          </linearGradient>
-        </defs>
-
-        {/* Grid lines (light frosted) */}
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ display: 'block' }}>
+        {/* Grid lines */}
         {[0, 0.25, 0.5, 0.75, 1].map(ratio => {
           const y = height - 20 - ratio * (height - 40);
           return (
@@ -72,34 +65,32 @@ const LineChart: React.FC<LineChartProps> = ({
               y1={y}
               x2={width - 20}
               y2={y}
-              stroke="rgba(255, 255, 255, 0.06)"
+              stroke="#1e293b"
               strokeWidth={1}
-              strokeDasharray="3 3"
             />
           );
         })}
 
         {/* Axes */}
-        <line x1={40} y1={height - 20} x2={width - 20} y2={height - 20} stroke="rgba(255, 255, 255, 0.15)" strokeWidth={1} />
-        <line x1={40} y1={20} x2={40} y2={height - 20} stroke="rgba(255, 255, 255, 0.15)" strokeWidth={1} />
+        <line x1={40} y1={height - 20} x2={width - 20} y2={height - 20} stroke="#334155" strokeWidth={1} />
+        <line x1={40} y1={20} x2={40} y2={height - 20} stroke="#334155" strokeWidth={1} />
 
         {/* Labels */}
-        <text x={width / 2} y={height - 4} textAnchor="middle" fontSize={10} fill="rgba(255, 255, 255, 0.45)" letterSpacing="0.05em">
+        <text x={width / 2} y={height - 4} textAnchor="middle" fontSize={10} fill="#94a3b8" fontFamily="'JetBrains Mono', monospace">
           {xLabel}
         </text>
-        <text x={12} y={height / 2} textAnchor="middle" fontSize={10} fill="rgba(255, 255, 255, 0.45)" transform={`rotate(-90,12,${height / 2})`} letterSpacing="0.05em">
+        <text x={12} y={height / 2} textAnchor="middle" fontSize={10} fill="#94a3b8" transform={`rotate(-90,12,${height / 2})`} fontFamily="'JetBrains Mono', monospace">
           {yLabel}
         </text>
 
-        {/* Line */}
+        {/* Clean Engineering Telemetry Line */}
         <path
           d={path}
           fill="none"
           stroke={strokeColor}
-          strokeWidth={2}
+          strokeWidth={1.75}
           strokeLinecap="round"
           strokeLinejoin="round"
-          filter={`drop-shadow(0 0 6px ${strokeColor}66)`}
         />
 
         {/* Data points */}
@@ -109,7 +100,7 @@ const LineChart: React.FC<LineChartProps> = ({
               key={i}
               cx={p.x}
               cy={p.y}
-              r={3}
+              r={2.5}
               fill={strokeColor}
             />
           ))}
