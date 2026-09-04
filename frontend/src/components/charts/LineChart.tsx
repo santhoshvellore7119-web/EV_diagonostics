@@ -21,8 +21,8 @@ const LineChart: React.FC<LineChartProps> = ({
 }) => {
   if (data.length === 0) {
     return (
-      <div style={{ width, height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6b7280' }}>
-        No data available
+      <div style={{ width, height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255, 255, 255, 0.35)', fontSize: '0.8rem' }}>
+        No telemetry available
       </div>
     );
   }
@@ -53,21 +53,16 @@ const LineChart: React.FC<LineChartProps> = ({
     .join(' ');
 
   return (
-    <div style={{ width, height, fontFamily: 'system-ui, sans-serif' }}>
-      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ display: 'block' }}>
-        {/* Axes */}
-        <line x1={40} y1={height - 20} x2={width - 20} y2={height - 20} stroke="#9ca3af" strokeWidth={1} />
-        <line x1={40} y1={20} x2={40} y2={height - 20} stroke="#9ca3af" strokeWidth={1} />
+    <div style={{ width, height, fontFamily: 'inherit' }}>
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', overflow: 'visible' }}>
+        <defs>
+          <linearGradient id={`grad-${strokeColor.replace('#', '')}`} x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor={strokeColor} stopOpacity="0.25" />
+            <stop offset="100%" stopColor={strokeColor} stopOpacity="0.0" />
+          </linearGradient>
+        </defs>
 
-        {/* Labels */}
-        <text x={width / 2} y={height - 5} textAnchor="middle" fontSize={12} fill="#6b7280">
-          {xLabel}
-        </text>
-        <text x={15} y={height / 2} textAnchor="middle" fontSize={12} fill="#6b7280" transform={`rotate(-90,15,${height / 2})`}>
-          {yLabel}
-        </text>
-
-        {/* Grid lines (light) */}
+        {/* Grid lines (light frosted) */}
         {[0, 0.25, 0.5, 0.75, 1].map(ratio => {
           const y = height - 20 - ratio * (height - 40);
           return (
@@ -77,11 +72,35 @@ const LineChart: React.FC<LineChartProps> = ({
               y1={y}
               x2={width - 20}
               y2={y}
-              stroke="#e5e7eb"
-              strokeWidth={0.5}
+              stroke="rgba(255, 255, 255, 0.06)"
+              strokeWidth={1}
+              strokeDasharray="3 3"
             />
           );
         })}
+
+        {/* Axes */}
+        <line x1={40} y1={height - 20} x2={width - 20} y2={height - 20} stroke="rgba(255, 255, 255, 0.15)" strokeWidth={1} />
+        <line x1={40} y1={20} x2={40} y2={height - 20} stroke="rgba(255, 255, 255, 0.15)" strokeWidth={1} />
+
+        {/* Labels */}
+        <text x={width / 2} y={height - 4} textAnchor="middle" fontSize={10} fill="rgba(255, 255, 255, 0.45)" letterSpacing="0.05em">
+          {xLabel}
+        </text>
+        <text x={12} y={height / 2} textAnchor="middle" fontSize={10} fill="rgba(255, 255, 255, 0.45)" transform={`rotate(-90,12,${height / 2})`} letterSpacing="0.05em">
+          {yLabel}
+        </text>
+
+        {/* Line */}
+        <path
+          d={path}
+          fill="none"
+          stroke={strokeColor}
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          filter={`drop-shadow(0 0 6px ${strokeColor}66)`}
+        />
 
         {/* Data points */}
         {showPoints &&
@@ -94,14 +113,6 @@ const LineChart: React.FC<LineChartProps> = ({
               fill={strokeColor}
             />
           ))}
-
-        {/* Line */}
-        <path
-          d={path}
-          fill="none"
-          stroke={strokeColor}
-          strokeWidth={2}
-        />
       </svg>
     </div>
   );

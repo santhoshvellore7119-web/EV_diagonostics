@@ -18,9 +18,17 @@ function App() {
   return (
     <div className="App">
       <header className="app-header">
-        <h1>Unified Diagnostic Dashboard</h1>
-        <div className="app-subtitle">
-          Low-Cost Multi-Modal Diagnostic and Active Cell-Rebalancing System
+        <div>
+          <h1>Unified Diagnostic Dashboard</h1>
+          <div className="app-subtitle">
+            Low-Cost Multi-Modal Diagnostic & Active Cell-Rebalancing System
+          </div>
+        </div>
+        <div className="header-status-badge">
+          <div className="connection-status">
+            <span className="live-dot"></span>
+            <span>SYSTEM ACTIVE: 10 Hz</span>
+          </div>
         </div>
       </header>
 
