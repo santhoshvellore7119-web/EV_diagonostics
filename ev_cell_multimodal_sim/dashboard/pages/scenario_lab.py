@@ -24,6 +24,16 @@ from models.evaluate import evaluate_model
 from control.decision_engine import DecisionEngine
 from config import params as P
 
+# Module-level mapping
+MODE_TO_IDX = {
+    'healthy': 0,
+    'li_plating': 1,
+    'active_material_loss': 2,
+    'electrolyte_decomposition': 3,
+    'gas_generation': 4,
+    'internal_short': 5
+}
+
 # Page configuration
 st.set_page_config(
     page_title="Scenario Lab",
@@ -239,10 +249,9 @@ def create_comparison_plots(baseline_result, uncertainty_result, time_s):
     )
 
     # Prediction Accuracy Comparison
-    baseline_correct = baseline_result['predicted_mode'] == \
-                       list(mode_to_idx.values())[list(mode_to_idx.keys()).index(uncertainty_result['true_mode'])]
-    uncertainty_correct = uncertainty_result['predicted_mode'] == \
-                          list(mode_to_idx.values())[list(mode_to_idx.keys()).index(uncertainty_result['true_mode'])]
+    true_idx = MODE_TO_IDX.get(uncertainty_result['true_mode'], 0)
+    baseline_correct = (baseline_result['predicted_mode'] == true_idx)
+    uncertainty_correct = (uncertainty_result['predicted_mode'] == true_idx)
 
     fig.add_trace(
         go.Bar(

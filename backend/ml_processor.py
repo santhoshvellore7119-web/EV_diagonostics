@@ -25,6 +25,11 @@ ml_path = os.path.join(project_root, 'ml_pipeline')
 if ml_path not in sys.path:
     sys.path.insert(0, ml_path)
 
+sim_core_path = os.path.join(project_root, 'ev_cell_multimodal_sim')
+if sim_core_path not in sys.path:
+    sys.path.insert(0, sim_core_path)
+
+from core.physics_engine import simulate_cell_from_parameters
 from common.diagnostic_schema import DiagnosticFrame
 
 try:
@@ -98,74 +103,69 @@ class MLProcessor:
 
     def _synthesize_waveforms(self, raw_frame: Dict[str, Any]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
-        Synthesize physical 256-sample excitation waveforms from input telemetry parameters,
-        matching the physics domain on which MultiBranchFusionNet was trained.
+        Synthesize physical 256-sample excitation waveforms from measurable physical telemetry parameters.
+        Guarantees ZERO label leakage: Does not inspect degradation mode or any label string.
         """
-        t = np.linspace(0, 1, self.sequence_length)
-        deg_mode = str(raw_frame.get('degradation_mode', 'healthy')).lower()
+        # Extract measurable electrical parameters
+        v_meas = float(raw_frame.get('electrical_voltage', 3.7))
+        i_meas = float(raw_frame.get('electrical_current', 0.5))
+        r0 = float(raw_frame.get('electrical_resistance', 0.045))
+        if r0 <= 0.001:
+            r0 = 0.045
+        r1 = float(max(0.010, r0 * 0.6))
+        c1 = 1800.0
 
-        # 1. Electrical Waveform (Transient double-exponential pulse response)
-        if deg_mode == 'li_plating':
-            electrical = np.exp(-t / 0.28) - 0.35 * np.exp(-t / 0.02) + 0.15 * np.exp(-t / 0.8)
-        elif deg_mode == 'active_material_loss':
-            electrical = np.exp(-t / 0.04) - 0.60 * np.exp(-t / 0.008)
-        elif deg_mode == 'electrolyte_decomposition':
-            electrical = np.exp(-t / 0.08) + 0.30 * np.exp(-t / 0.40) + 0.08 * np.sin(12 * np.pi * t) * np.exp(-3 * t)
-        elif deg_mode == 'gas_generation':
-            electrical = np.exp(-t / 0.12) - 0.40 * np.exp(-t / 0.015) + 0.04 * np.sin(6 * np.pi * t)
-        elif deg_mode == 'internal_short':
-            electrical = -0.80 * (1 - np.exp(-t / 0.05)) + np.exp(-t / 0.02)
-        else:  # healthy
-            electrical = np.exp(-t / 0.12) - 0.40 * np.exp(-t / 0.015)
+        # Estimate SOC from voltage if not directly provided
+        sim_soc = raw_frame.get('simulation_soc')
+        if sim_soc is not None:
+            soc = float(np.clip(sim_soc, 0.0, 1.0))
+        else:
+            soc = float(np.clip((v_meas - 3.0) / 1.2, 0.0, 1.0))
 
-        # 2. Ultrasonic Waveform (Pulse-Echo RF Waveform with ToF delay shift and acoustic features)
-        pulse = np.exp(-((t - 0.25) ** 2) / (2 * 0.02 ** 2))
-        if deg_mode == 'li_plating':
-            echo = -0.65 * np.exp(-((t - 0.56) ** 2) / (2 * 0.018 ** 2))
-            ultrasonic = pulse + echo
-        elif deg_mode == 'active_material_loss':
-            echo = 0.35 * np.exp(-((t - 0.66) ** 2) / (2 * 0.025 ** 2))
-            ultrasonic = pulse + echo
-        elif deg_mode == 'electrolyte_decomposition':
-            echo = 0.40 * np.exp(-((t - 0.62) ** 2) / (2 * 0.035 ** 2)) + 0.06 * np.sin(30 * np.pi * t)
-            ultrasonic = pulse + echo
-        elif deg_mode == 'gas_generation':
-            echo1 = 0.12 * np.exp(-((t - 0.60) ** 2) / (2 * 0.015 ** 2))
-            rev1 = 0.25 * np.exp(-((t - 0.42) ** 2) / (2 * 0.02 ** 2))
-            rev2 = 0.18 * np.exp(-((t - 0.72) ** 2) / (2 * 0.02 ** 2))
-            ultrasonic = pulse + echo1 + rev1 + rev2
-        elif deg_mode == 'internal_short':
-            burst1 = 0.80 * np.exp(-((t - 0.15) ** 2) / (2 * 0.01 ** 2))
-            burst2 = 0.60 * np.exp(-((t - 0.48) ** 2) / (2 * 0.015 ** 2))
-            ultrasonic = burst1 + burst2
-        else:  # healthy
-            echo = 0.70 * np.exp(-((t - 0.60) ** 2) / (2 * 0.018 ** 2))
-            ultrasonic = pulse + echo
+        # Extract measurable ultrasonic parameters
+        tof_us = float(raw_frame.get('ultrasonic_timeOfFlight', 8.0))
+        sos = float(raw_frame.get('ultrasonic_speedOfSound', 2500.0))
+        if tof_us > 0.01 and (sos < 500.0 or sos > 4000.0):
+            # Compute speed of sound from round-trip ToF: d = 2 * 0.01 m
+            sos = (2.0 * 0.01) / (tof_us * 1e-6)
+        attenuation = float(np.clip(raw_frame.get('ultrasonic_amplitude', 1.0), 0.1, 1.2))
+        phase_shift = float(raw_frame.get('ultrasonic_phaseShift', 0.0))
 
-        # 3. Thermal Waveform (Transient heating/cooling temperature rise)
-        if deg_mode == 'li_plating':
-            thermal = np.exp(-t / 0.35) * (1 - np.exp(-t / 0.05))
-        elif deg_mode == 'active_material_loss':
-            thermal = (1 - np.exp(-t / 0.015)) * np.exp(-t / 0.15)
-        elif deg_mode == 'electrolyte_decomposition':
-            thermal = (1 - np.exp(-t / 0.04)) * np.exp(-t / 0.40) + 0.12 * np.sin(2 * np.pi * t)
-        elif deg_mode == 'gas_generation':
-            thermal = np.zeros_like(t)
-            thermal[t > 0.05] = (1 - np.exp(-(t[t > 0.05] - 0.05) / 0.15)) * np.exp(-t[t > 0.05] / 0.35)
-        elif deg_mode == 'internal_short':
-            thermal = (1 - np.exp(-t / 0.02)) + 0.80 * (t ** 2)
-        else:  # healthy
-            thermal = np.exp(-t / 0.25) * (1 - np.exp(-t / 0.06))
+        # Extract measurable thermal parameters
+        temp = float(raw_frame.get('thermal_temperature', 25.0))
+        r_th = float(2.0 + max(0.0, temp - 25.0) * 0.05)
+        c_th = 500.0
+        gas_reverb = bool(attenuation < 0.70 or (temp > 35.0 and attenuation < 0.85))
 
-        # Add minor natural telemetry perturbation
-        electrical = electrical + np.random.randn(self.sequence_length) * 0.015
-        ultrasonic = ultrasonic + np.random.randn(self.sequence_length) * 0.020
-        thermal = thermal + np.random.randn(self.sequence_length) * 0.010
+        sampling_rate_hz = 200000.0
+        period_s = self.sequence_length / sampling_rate_hz
+        sim_res = simulate_cell_from_parameters(
+            soc=soc,
+            r0=r0,
+            r1=r1,
+            c1=c1,
+            sos=sos,
+            attenuation=attenuation,
+            r_th=r_th,
+            c_th=c_th,
+            pulse_amp=0.5 if abs(i_meas) < 1e-3 else abs(i_meas),
+            pulse_width_s=10e-6,
+            period_s=period_s,
+            sampling_rate_hz=sampling_rate_hz,
+            add_noise=False,
+            phase_shift=phase_shift,
+            gas_reverb=gas_reverb,
+            temp_ambient=temp
+        )
 
-        # Per-sample zero-mean unit-variance standardization
-        electrical = (electrical - np.mean(electrical)) / (np.std(electrical) + 1e-8)
-        ultrasonic = (ultrasonic - np.mean(ultrasonic)) / (np.std(ultrasonic) + 1e-8)
-        thermal = (thermal - np.mean(thermal)) / (np.std(thermal) + 1e-8)
+        voltage = sim_res['electrical']['voltage'][:self.sequence_length]
+        ultrasonic_sig = sim_res['ultrasonic']['signal'][:self.sequence_length]
+        temp_rise = sim_res['thermal']['temperature_rise'][:self.sequence_length]
+
+        # Standard physical scaling normalization
+        electrical = (voltage - 3.0) / 1.5
+        ultrasonic = ultrasonic_sig
+        thermal = temp_rise / 20.0
 
         return electrical, ultrasonic, thermal
 

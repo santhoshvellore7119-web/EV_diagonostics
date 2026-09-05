@@ -96,42 +96,42 @@ This repository defines two production-grade, defensible analog front-end (AFE) 
 
 The total hardware cost is split into two modular boards: the **4-Cell Multi-Modal Sensing Front-End** and the **Active Bi-Directional Power Balancing Stage**.
 
-### 3.1 Subsystem 1: 4-Cell Diagnostic Sensing Front-End (Target: < $35.00)
+### 3.1 Subsystem 1: 4-Cell Diagnostic Sensing Front-End (Target: < \$35.00)
 | Item # | Component | Manufacturer & Part Number | Description / Specs | Unit Cost (1k Qty) | Total Subsystem Cost |
 |---|---|---|---|---|---|
-| 1.1 | PZT Transducers (x4 pair) | Audiowell / Piezo Hannas | 2.5 MHz PZT-5H disc, 10mm dia | $0.85 / ea (x8 = $6.80) | $6.80 |
-| 1.2 | Ultrasonic Pulser IC | Microchip / TI MD1210 + TC6320 | Dual high-speed ultrasound pulser | $2.40 | $2.40 |
-| 1.3 | Analog Front End / LNA | Analog Devices AD8065ARZ | 145 MHz FET input ultra-low noise op-amp | $1.85 | $1.85 |
-| 1.4 | High-Speed Comparator | Texas Instruments TLV3501 | 4.5 ns Rail-to-Rail high-speed comparator | $1.20 | $1.20 |
-| 1.5 | Time-to-Digital Converter | Texas Instruments TDC7200PWR | 55 ps resolution picosecond stopwatch | $2.85 | $2.85 |
-| 1.6 | Multi-Channel Multiplexer | Analog Devices ADG704BRUZ | 4-channel low-capacitance RF switch | $1.40 | $1.40 |
-| 1.7 | Main Microcontroller | Espressif ESP32-S3-WROOM-1 | Dual-core 240MHz, 8MB Flash, 2MB PSRAM | $2.75 | $2.75 |
-| 1.8 | Precision Current/Voltage Sensor | Texas Instruments INA226AIDGSR | 16-bit $I^2C$ Bi-directional Current/Power Monitor | $1.65 | $1.65 |
-| 1.9 | NTC Thermistor Array (x4) | TDK NTCG103UH103HT1 | 10k $\Omega$, 0.5% tolerance, 0.05C resolution | $0.20 / ea (x4 = $0.80) | $0.80 |
-| 1.10 | Power Management & LDOs | TI TPS7A4700 / AP7361C | Low-noise RF LDO (3.3V / 5.0V / +12V boost) | $2.80 | $2.80 |
-| 1.11 | PCB, Passives, Connectors | 4-Layer FR4 Impedance Controlled | PCB fabrication, discrete passives, SMA/JST | $3.50 | $3.50 |
-| **TOTAL SENSING BOM** | | | | | **$32.00** |
+| 1.1 | PZT Transducers (x4 pair) | Audiowell / Piezo Hannas | 2.5 MHz PZT-5H disc, 10mm dia | \$0.85 / ea (x8 = \$6.80) | \$6.80 |
+| 1.2 | Ultrasonic Pulser IC | Microchip / TI MD1210 + TC6320 | Dual high-speed ultrasound pulser | \$2.40 | \$2.40 |
+| 1.3 | Analog Front End / LNA | Analog Devices AD8065ARZ | 145 MHz FET input ultra-low noise op-amp | \$1.85 | \$1.85 |
+| 1.4 | High-Speed Comparator | Texas Instruments TLV3501 | 4.5 ns Rail-to-Rail high-speed comparator | \$1.20 | \$1.20 |
+| 1.5 | Time-to-Digital Converter | Texas Instruments TDC7200PWR | 55 ps resolution picosecond stopwatch | \$2.85 | \$2.85 |
+| 1.6 | Multi-Channel Multiplexer | Analog Devices ADG704BRUZ | 4-channel low-capacitance RF switch | \$1.40 | \$1.40 |
+| 1.7 | Main Microcontroller | Espressif ESP32-S3-WROOM-1 | Dual-core 240MHz, 8MB Flash, 2MB PSRAM | \$2.75 | \$2.75 |
+| 1.8 | Precision Current/Voltage Sensor | Texas Instruments INA226AIDGSR | 16-bit $I^2C$ Bi-directional Current/Power Monitor | \$1.65 | \$1.65 |
+| 1.9 | NTC Thermistor Array (x4) | TDK NTCG103UH103HT1 | 10k $\Omega$, 0.5% tolerance, 0.05C resolution | \$0.20 / ea (x4 = \$0.80) | \$0.80 |
+| 1.10 | Power Management & LDOs | TI TPS7A4700 / AP7361C | Low-noise RF LDO (3.3V / 5.0V / +12V boost) | \$2.80 | \$2.80 |
+| 1.11 | PCB, Passives, Connectors | 4-Layer FR4 Impedance Controlled | PCB fabrication, discrete passives, SMA/JST | \$3.50 | \$3.50 |
+| **TOTAL SENSING BOM** | | | | | **\$32.00** |
 
 ---
 
 ### 3.2 Subsystem 2: Active Bi-Directional Power Balancing Stage (Independent Hardware Gated)
 | Item # | Component | Manufacturer & Part Number | Description / Specs | Unit Cost (1k Qty) | Total Subsystem Cost |
 |---|---|---|---|---|---|
-| 2.1 | Synchronous Buck-Boost Controller | TI LM5176PWPR | Bi-directional 4-switch Buck-Boost Controller | $5.60 | $5.60 |
-| 2.2 | Dual Power MOSFETs (x2) | Alpha & Omega AON6500 | 30V 40A, $R_{DS(on)} < 2.5\text{ m}\Omega$ | $1.65 / ea (x4 = $6.60) | $6.60 |
-| 2.3 | Power Inductor | Wurth Elektronik 7443321000 | 10 $\mu\text{H}$, 15A Saturation, High Q | $2.40 | $2.40 |
-| 2.4 | Galvanic Digital Isolator | Texas Instruments ISO7741 | 5 kV RMS Quad-Channel Digital Isolator | $1.95 | $1.95 |
-| 2.5 | Hardware Safety Disconnect Relay | Panasonic AQY282EH Solid-State | Phototriac / PhotoMOS optical fail-safe relay | $2.20 | $2.20 |
-| 2.6 | Shunt Resistor & Gate Drivers | Vishay WSL2512 + TI UCC27211 | $2\text{ m}\Omega$ 1% shunt + high-speed gate driver | $2.10 | $2.10 |
-| 2.7 | Thermal Dissipation & Connectors | Custom Aluminum Extrusion | Thermal pad, chassis sink, automotive terminals | $4.50 | $4.50 |
-| **TOTAL REBALANCING BOM** | | | | | **$51.35** |
+| 2.1 | Synchronous Buck-Boost Controller | TI LM5176PWPR | Bi-directional 4-switch Buck-Boost Controller | \$5.60 | \$5.60 |
+| 2.2 | Dual Power MOSFETs (x2) | Alpha & Omega AON6500 | 30V 40A, $R_{DS(on)} < 2.5\text{ m}\Omega$ | \$1.65 / ea (x4 = \$6.60) | \$6.60 |
+| 2.3 | Power Inductor | Wurth Elektronik 7443321000 | 10 $\mu\text{H}$, 15A Saturation, High Q | \$2.40 | \$2.40 |
+| 2.4 | Galvanic Digital Isolator | Texas Instruments ISO7741 | 5 kV RMS Quad-Channel Digital Isolator | \$1.95 | \$1.95 |
+| 2.5 | Hardware Safety Disconnect Relay | Panasonic AQY282EH Solid-State | Phototriac / PhotoMOS optical fail-safe relay | \$2.20 | \$2.20 |
+| 2.6 | Shunt Resistor & Gate Drivers | Vishay WSL2512 + TI UCC27211 | $2\text{ m}\Omega$ 1% shunt + high-speed gate driver | \$2.10 | \$2.10 |
+| 2.7 | Thermal Dissipation & Connectors | Custom Aluminum Extrusion | Thermal pad, chassis sink, automotive terminals | \$4.50 | \$4.50 |
+| **TOTAL REBALANCING BOM** | | | | | **\$51.35** |
 
 ---
 
 ### 3.3 Complete Production System Cost
-- **Total Diagnostic Sensing BOM (4-Cell Module)**: **$32.00** (Well within < $50 target)
-- **Total Active Power Rebalancing BOM**: **$51.35**
-- **Combined Integrated System**: **$83.35** (at 1,000 unit volume)
+- **Total Diagnostic Sensing BOM (4-Cell Module)**: **\$32.00** (Well within < \$50 target)
+- **Total Active Power Rebalancing BOM**: **\$51.35**
+- **Combined Integrated System**: **\$83.35** (at 1,000 unit volume)
 
 ---
 

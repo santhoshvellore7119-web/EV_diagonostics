@@ -62,6 +62,7 @@ class DiagnosticFrame:
 
     # --- Degradation Mode Classification ---
     degradation_mode: str = 'healthy'
+    degradation_mode_idx: int = 0
     degradation_probability: float = 0.95
     degradation_entropy: float = 0.15
     degradation_perClass_healthy: float = 0.95

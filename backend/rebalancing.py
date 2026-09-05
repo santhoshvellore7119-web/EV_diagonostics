@@ -113,7 +113,8 @@ class RebalancingProcessor:
             pwm_duty = 0.0
             action_reason = f"Classification confidence P={degradation_prob*100:.1f}% below recovery threshold (65%). Monitoring in passive mode."
 
-        result = {
+        result = enhanced_frame.copy()
+        result.update({
             'rebalancing_state': state,
             'rebalancing_selectedAction': recovery_action,
             'rebalancing_actionReason': action_reason,
@@ -125,7 +126,7 @@ class RebalancingProcessor:
             'rebalancing_powerStage_actualVoltage': float(voltage),
             'rebalancing_powerStage_pwmDutyCycle': float(pwm_duty),
             'rebalancing_executionTime': float(status['time_in_state'])
-        }
+        })
 
         self._store_prerecovery_soh_if_needed(status, soh)
         self._update_recovery_effectiveness_if_needed(enhanced_frame, status)

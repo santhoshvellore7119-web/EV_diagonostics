@@ -30,50 +30,66 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f'Training Device: {device}', flush=True)
 
-    num_samples = 3000
+    num_samples_train = 2400
+    num_samples_test = 600
     seq_length = 256
     batch_size = 32
-    num_epochs = 20
+    num_epochs = 25
     learning_rate = 1e-3
     weight_decay = 1e-4
 
-    print(f'Pre-generating {num_samples} multi-modal samples in RAM...', flush=True)
-    raw_dataset = MultiModalBatteryDataset(num_samples=num_samples, seq_length=seq_length)
-    degradation_classes = raw_dataset.degradation_modes
+    print(f'Generating In-Distribution Training Data (SOC in [0.20, 0.80])...', flush=True)
+    train_raw = MultiModalBatteryDataset(num_samples=num_samples_train, seq_length=seq_length, soc_range=(0.20, 0.80), seed=42)
+    degradation_classes = train_raw.degradation_modes
 
-    elec_list, ultra_list, therm_list, deg_list, soh_list = [], [], [], [], []
-    for i in range(num_samples):
-        s = raw_dataset[i]
-        elec_list.append(s['electrical'])
-        ultra_list.append(s['ultrasonic'])
-        therm_list.append(s['thermal'])
-        deg_list.append(s['degradation_mode'])
-        # SOH normalized to [0.0, 1.0] for numerically stable multi-task training
-        soh_val = float(s['soh'].item() if isinstance(s['soh'], torch.Tensor) else s['soh'])
-        soh_list.append(soh_val / 100.0)
+    print(f'Generating Parametrically Held-Out Test Data (SOC in [0.05, 0.20) U (0.80, 0.95])...', flush=True)
+    test_low = MultiModalBatteryDataset(num_samples=num_samples_test // 2, seq_length=seq_length, soc_range=(0.05, 0.20), seed=101)
+    test_high = MultiModalBatteryDataset(num_samples=num_samples_test // 2, seq_length=seq_length, soc_range=(0.80, 0.95), seed=202)
 
-    elec_tensor = torch.stack(elec_list)
-    ultra_tensor = torch.stack(ultra_list)
-    therm_tensor = torch.stack(therm_list)
-    deg_tensor = torch.tensor(deg_list, dtype=torch.long)
-    soh_tensor = torch.tensor(soh_list, dtype=torch.float32).unsqueeze(1)
+    def extract_tensors(dataset):
+        elec_list, ultra_list, therm_list, deg_list, soh_list = [], [], [], [], []
+        for i in range(len(dataset)):
+            s = dataset[i]
+            elec_list.append(s['electrical'])
+            ultra_list.append(s['ultrasonic'])
+            therm_list.append(s['thermal'])
+            deg_list.append(s['degradation_mode'])
+            soh_val = float(s['soh'].item() if isinstance(s['soh'], torch.Tensor) else s['soh'])
+            soh_list.append(soh_val / 100.0)
+        return TensorDataset(
+            torch.stack(elec_list),
+            torch.stack(ultra_list),
+            torch.stack(therm_list),
+            torch.tensor(deg_list, dtype=torch.long),
+            torch.tensor(soh_list, dtype=torch.float32).unsqueeze(1)
+        )
 
-    tensor_dataset = TensorDataset(elec_tensor, ultra_tensor, therm_tensor, deg_tensor, soh_tensor)
+    train_tensor_data = extract_tensors(train_raw)
+    test_tensor_low = extract_tensors(test_low)
+    test_tensor_high = extract_tensors(test_high)
+    
+    # Merge held-out test sets
+    test_tensor_data = TensorDataset(
+        torch.cat([test_tensor_low.tensors[0], test_tensor_high.tensors[0]]),
+        torch.cat([test_tensor_low.tensors[1], test_tensor_high.tensors[1]]),
+        torch.cat([test_tensor_low.tensors[2], test_tensor_high.tensors[2]]),
+        torch.cat([test_tensor_low.tensors[3], test_tensor_high.tensors[3]]),
+        torch.cat([test_tensor_low.tensors[4], test_tensor_high.tensors[4]])
+    )
 
-    train_size = int(0.70 * num_samples)
-    val_size = int(0.15 * num_samples)
-    test_size = num_samples - train_size - val_size
-
-    train_set, val_set, test_set = random_split(
-        tensor_dataset, [train_size, val_size, test_size],
+    train_size = int(0.85 * len(train_tensor_data))
+    val_size = len(train_tensor_data) - train_size
+    train_set, val_set = random_split(
+        train_tensor_data, [train_size, val_size],
         generator=torch.Generator().manual_seed(42)
     )
+    test_set = test_tensor_data
 
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, drop_last=True)
     val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False)
 
-    print(f'Dataset splits: Train={len(train_set)}, Val={len(val_set)}, Test={len(test_set)}', flush=True)
+    print(f'Dataset splits: Train={len(train_set)} (SOC 0.20-0.80), Val={len(val_set)} (SOC 0.20-0.80), Held-Out Test={len(test_set)} (SOC <0.20 & >0.80)', flush=True)
 
     model = MultiBranchFusionNet(
         seq_length=seq_length,

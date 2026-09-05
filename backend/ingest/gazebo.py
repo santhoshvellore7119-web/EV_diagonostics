@@ -349,7 +349,7 @@ class GazeboIngestor:
         }
         effect = deg_effects.get(self.degradation_mode, deg_effects['healthy'])
 
-        return {
+        frame = {
             "timestamp": datetime.now().timestamp(),
             "frameId": str(uuid.uuid4()),
             "source": "gazebo",
