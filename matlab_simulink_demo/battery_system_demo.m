@@ -145,30 +145,25 @@ for i = 1:numel(scenarios)
     end
 end
 
-% Adjust layout - simple alternative to tight_layout
-    drawnow; % Force GUI update
-    % Add some spacing between subplots
-    if figNum > 1
-        sgtitle(''); % Clear any existing suptitle to reset spacing
-    end
+% Adjust layout
+drawnow;
 
 % Add explanation
-explanation = [
-    'This demo shows how different battery degradation modes affect the multi-modal sensor readings:\n';
-    '• Voltage, Current, Power: Electrical sensing via shunt measurements\n';
-    '• ToF: Time-of-Flight of ultrasonic pulse (affected by speed of sound changes)\n';
-    '• Amp: Ultrasonic signal amplitude (affected by attenuation)\n';
-    '• Phase: Phase shift of ultrasonic signal (affected by material properties)\n';
-    '• Temp Rise: Temperature increase from joule heating during excitation\n';
-    '• dT/dt: Rate of temperature change during excitation\n\n';
-    'Different degradation modes produce distinct signatures across these modalities,\n';
-    'enabling machine learning fusion for accurate classification and SOH estimation.\n\n';
-    'ENHANCEMENTS DEMONSTRATED:\n';
-    '• Mixed-mode detection (e.g., 0.3*li_plating + 0.7*active_material_loss)\n';
-    '• Continuous degradation progression modeling\n';
-    '• Uncertainty quantification\n';
-    '• SOH-dependent parameter scaling'
-];
+explanation = sprintf([...
+    'This demo shows how different battery degradation modes affect the multi-modal sensor readings:\n', ...
+    '• Voltage, Current, Power: Electrical sensing via shunt measurements\n', ...
+    '• ToF: Time-of-Flight of ultrasonic pulse (affected by speed of sound changes)\n', ...
+    '• Amp: Ultrasonic signal amplitude (affected by attenuation)\n', ...
+    '• Phase: Phase shift of ultrasonic signal (affected by material properties)\n', ...
+    '• Temp Rise: Temperature increase from joule heating during excitation\n', ...
+    '• dT/dt: Rate of temperature change during excitation\n\n', ...
+    'Different degradation modes produce distinct signatures across these modalities,\n', ...
+    'enabling machine learning fusion for accurate classification and SOH estimation.\n\n', ...
+    'ENHANCEMENTS DEMONSTRATED:\n', ...
+    '• Mixed-mode detection (e.g., 0.3*li_plating + 0.7*active_material_loss)\n', ...
+    '• Continuous degradation progression modeling\n', ...
+    '• Uncertainty quantification\n', ...
+    '• SOH-dependent parameter scaling']);
 
 % Add text box
 annotation('textbox', [0.02, 0.02, 0.4, 0.2], ...
@@ -178,14 +173,17 @@ annotation('textbox', [0.02, 0.02, 0.4, 0.2], ...
     'EdgeColor', [0.8 0.8 0.8], ...
     'LineWidth', 1);
 
-fprintf('Demo complete. Close the figure window to continue.\n');
-fprintf('\nTo run a full Simulink simulation, you would need to:\n');
-fprintf('1. Open the Simulink model (if available)\n');
-fprintf('2. Configure the simulation parameters\n');
-fprintf('3. Run the simulation to see dynamic behavior\n');
+fprintf('Demo complete.\n');
+saveas(gcf, 'battery_system_demo.png');
+fprintf('Figure exported to battery_system_demo.png\n');
 
-% Wait for user to close figure
-uiwait(gcf);
+% Only wait for window close when running in interactive desktop GUI mode
+try
+    if usejava('desktop') && ~feature('isbatch')
+        uiwait(gcf);
+    end
+catch
+end
 
 
 % Helper functions (simplified versions)
