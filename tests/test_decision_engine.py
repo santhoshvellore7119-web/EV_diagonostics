@@ -1,61 +1,61 @@
 #!/usr/bin/env python
 """
-Quick test to verify the enhanced decision engine can be imported and instantiated.
+Unit and integration tests for Active Rebalancing Decision Engine state machine.
 """
 
 import sys
 import os
+import pytest
 
-# Add the project root directory to path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
-try:
-    from active_rebalancing.decision_engine.state_machine import DecisionEngine, SystemState, DegradationMode, RecoveryAction
-    import time
+from active_rebalancing.decision_engine.state_machine import DecisionEngine, SystemState, DegradationMode, RecoveryAction
 
-    print("Testing DecisionEngine import and instantiation...")
 
-    # Test basic instantiation
+def test_decision_engine_instantiation():
+    """Verify decision engine initializes in IDLE state."""
     engine = DecisionEngine()
-    print("  DecisionEngine created successfully")
-
-    # Test initial state
     status = engine.get_status()
-    print(f"  Initial state: {status['state']}")
-    assert status['state'] == 'IDLE', f"Expected IDLE, got {status['state']}"
+    assert status['state'] == 'IDLE' or status['state'] == SystemState.IDLE.name
 
-    # Test updating ML results
-    print("  Testing ML results update...")
+
+def test_decision_engine_ml_update():
+    """Verify ML diagnostic inferences update state machine parameters."""
+    engine = DecisionEngine()
     engine.update_ml_results(DegradationMode.LI_PLATING.value, 0.85, 75.0)
     status = engine.get_status()
-    print(f"    After ML update - Mode: {status['ml_results']['degradation_mode'].name}, SOH: {status['ml_results']['soh']}%")
     assert status['ml_results']['degradation_mode'] == DegradationMode.LI_PLATING
     assert abs(status['ml_results']['soh'] - 75.0) < 0.1
 
-    # Test setting cell characteristics
-    print("  Testing cell characteristics...")
+
+def test_decision_engine_cell_characteristics():
+    """Verify setting cell chemistry and characteristics."""
+    engine = DecisionEngine()
     engine.set_cell_characteristics({
         'age_months': 18,
         'chemistry': 'NMC',
         'form_factor': 'cylindrical'
     })
     status = engine.get_status()
-    print(f"    Cell characteristics set: {bool(status.get('cell_under_test') is None)}")  # Will be None until set
+    assert status is not None
 
-    # Test a simple execution cycle
-    print("  Testing execution cycle...")
-    for i in range(5):
+
+def test_decision_engine_execution_cycles():
+    """Verify execution cycles advance state machine without uncaught exceptions."""
+    engine = DecisionEngine()
+    for _ in range(5):
         result = engine.execute()
-        # Just verify it runs without error and returns expected structure
         assert 'state' in result
         assert 'action' in result
         assert 'parameters' in result
         assert 'done' in result
 
-    print("All DecisionEngine tests passed!")
 
-except Exception as e:
-    print(f"Error testing DecisionEngine: {e}")
-    import traceback
-    traceback.print_exc()
+if __name__ == '__main__':
+    print("Running DecisionEngine tests directly...")
+    test_decision_engine_instantiation()
+    test_decision_engine_ml_update()
+    test_decision_engine_cell_characteristics()
+    test_decision_engine_execution_cycles()
+    print("All DecisionEngine tests passed successfully!")

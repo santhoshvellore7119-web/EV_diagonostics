@@ -128,66 +128,6 @@ async def lifespan(app: FastAPI):
     if hasattr(simulink_ingestor, 'terminate'):
         await simulink_ingestor.terminate()
 
-# Compatibility patch for Starlette 0.36+ / FastAPI 0.110+ router init
-import inspect
-import starlette.routing
-from fastapi.routing import APIRouter
-
-if 'on_startup' not in inspect.signature(starlette.routing.Router.__init__).parameters:
-    _orig_apirouter_init = APIRouter.__init__
-
-    def _patched_apirouter_init(
-        self,
-        *,
-        prefix="",
-        tags=None,
-        dependencies=None,
-        default_response_class=None,
-        responses=None,
-        callbacks=None,
-        routes=None,
-        redirect_slashes=True,
-        default=None,
-        dependency_overrides_provider=None,
-        route_class=None,
-        on_startup=None,
-        on_shutdown=None,
-        lifespan=None,
-        deprecated=None,
-        include_in_schema=True,
-        generate_unique_id_function=None,
-    ):
-        if default_response_class is None:
-            from fastapi.responses import JSONResponse
-            default_response_class = JSONResponse
-        if generate_unique_id_function is None:
-            from fastapi.routing import generate_unique_id
-            generate_unique_id_function = generate_unique_id
-
-        super(APIRouter, self).__init__(
-            routes=routes,
-            redirect_slashes=redirect_slashes,
-            default=default,
-            lifespan=lifespan,
-        )
-
-        if prefix:
-            assert prefix.startswith("/"), "A path prefix must start with '/'"
-            assert not prefix.endswith("/"), "A path prefix must not end with '/'"
-        self.prefix = prefix
-        self.tags = tags or []
-        self.dependencies = list(dependencies or [])
-        self.deprecated = deprecated
-        self.include_in_schema = include_in_schema
-        self.responses = responses or {}
-        self.callbacks = callbacks or []
-        self.dependency_overrides_provider = dependency_overrides_provider
-        from fastapi.routing import APIRoute
-        self.route_class = route_class or APIRoute
-        self.default_response_class = default_response_class
-        self.generate_unique_id_function = generate_unique_id_function
-
-    APIRouter.__init__ = _patched_apirouter_init
 
 
 app = FastAPI(
@@ -302,6 +242,7 @@ manager = ConnectionManager()
 
 # API Endpoints
 @app.get("/")
+@app.get("/api/status")
 async def root():
     return {
         "name": "Unified Diagnostic Dashboard API",

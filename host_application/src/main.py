@@ -7,6 +7,11 @@ import sys
 import os
 
 try:
+    from PyQt5 import QtWidgets
+except ImportError:
+    QtWidgets = None
+
+try:
     from .host_app import HostApp
     from .logger import setup_logger, get_logger
 except (ImportError, ValueError):
