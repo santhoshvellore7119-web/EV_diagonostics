@@ -1,0 +1,7 @@
+DegradationMode,SOC,AdaptivePulses,FixedPulses,AdaptiveEnergy_J,FixedEnergy_J,AdaptiveParamError,FixedParamError
+healthy,0.50,10,10,1.158521e-04,1.215000e-04,0.003873,0.032783
+li_plating,0.40,10,10,1.139960e-04,1.195500e-04,0.001568,0.037942
+severe_li_plating,0.30,10,10,1.121058e-04,1.175625e-04,0.002438,0.013032
+active_material_loss,0.60,10,10,1.176055e-04,1.233375e-04,0.002055,0.045730
+gas_generation,0.70,10,10,1.193246e-04,1.251375e-04,0.001000,0.017996
+internal_short,0.20,10,10,1.105577e-04,1.159500e-04,0.001357,0.023615
