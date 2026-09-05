@@ -242,6 +242,8 @@ class MultiBranchFusionNet(nn.Module):
 
         if attention_info is not None:
             result['attention_info'] = attention_info
+            if 'modality_weights' in attention_info:
+                result['modality_weights'] = attention_info['modality_weights']
 
         return result
 
