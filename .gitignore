@@ -82,3 +82,5 @@ py#
 *.pyx
 # Python 3.12
 __pypackages__#
+scratch/
+.pytest_cache/
