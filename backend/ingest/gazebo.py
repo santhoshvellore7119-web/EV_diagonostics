@@ -14,6 +14,13 @@ from typing import Optional, Dict, Any
 import sys
 import os
 
+# Add project root to sys.path for common imports
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+from common.diagnostic_schema import DiagnosticFrame
+
 # Try to import ROS 2 libraries
 try:
     import rclpy
@@ -407,7 +414,8 @@ class GazeboIngestor:
         # Calculate power
         frame["electrical_power"] = frame["electrical_voltage"] * frame["electrical_current"]
 
-        return frame
+        diag = DiagnosticFrame.from_dict(frame)
+        return diag.to_dict()
 
     async def cleanup(self):
         """Clean up ROS 2 resources."""

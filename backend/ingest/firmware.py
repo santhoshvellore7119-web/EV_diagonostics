@@ -11,6 +11,14 @@ import uuid
 import random
 from datetime import datetime
 from typing import Optional, Dict, Any
+import os, sys
+
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+from common.diagnostic_schema import DiagnosticFrame
+
 try:
     import serial  # pySerial for serial communication
     import serial.tools.list_ports
@@ -229,6 +237,8 @@ class FirmwareIngestor:
             "simulation_noiseLevel": None,
             "simulation_stepCount": None
         }
+        diag = DiagnosticFrame.from_dict(frame)
+        return diag.to_dict()
 
 
 # For testing standalone

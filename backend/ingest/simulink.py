@@ -8,11 +8,17 @@ and converts output variables to DiagnosticFrame objects.
 import asyncio
 import json
 import uuid
-import os
 import random
 from datetime import datetime
 from typing import Optional, Dict, Any
 import numpy as np
+import os, sys
+
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+from common.diagnostic_schema import DiagnosticFrame
 
 try:
     import fmi
@@ -285,6 +291,8 @@ class SimulinkIngestor:
             "simulation_noiseLevel": 0.1,
             "simulation_stepCount": int(self.time / self.step_size)
         }
+        diag = DiagnosticFrame.from_dict(frame)
+        return diag.to_dict()
 
 
 # For testing standalone

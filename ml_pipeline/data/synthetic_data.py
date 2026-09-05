@@ -108,83 +108,73 @@ class MultiModalBatteryDataset(Dataset):
     def _generate_electrical_base(self):
         """Generate a simulated electrical signal (e.g., voltage response to current pulse)."""
         t = np.linspace(0, 1, self.seq_length)
-        # Simulate a double exponential decay (typical battery response)
-        signal = np.exp(-t / 0.1) - 0.5 * np.exp(-t / 0.01)
+        signal = np.exp(-t / 0.12) - 0.4 * np.exp(-t / 0.015)
         return signal
 
     def _generate_ultrasonic_base(self):
         """Generate a simulated ultrasonic pulse-echo waveform."""
         t = np.linspace(0, 1, self.seq_length)
-        # Simulate a transmitted pulse and an echo
-        pulse = np.exp(-((t - 0.3) ** 2) / (2 * 0.02 ** 2))  # Main pulse
-        echo = 0.6 * np.exp(-((t - 0.6) ** 2) / (2 * 0.015 ** 2))  # Echo
-        signal = pulse + echo
-        return signal
+        pulse = np.exp(-((t - 0.25) ** 2) / (2 * 0.02 ** 2))
+        echo = 0.70 * np.exp(-((t - 0.60) ** 2) / (2 * 0.018 ** 2))
+        return pulse + echo
 
     def _generate_thermal_base(self):
         """Generate a simulated thermal transient response."""
         t = np.linspace(0, 1, self.seq_length)
-        # Simulate a rapid heating and slower cooling
-        signal = np.exp(-t / 0.2) * (1 - np.exp(-t / 0.05))
+        signal = np.exp(-t / 0.25) * (1 - np.exp(-t / 0.06))
         return signal
 
     def _apply_lithium_plating(self, electrical, ultrasonic, thermal):
-        """Modify signals to simulate lithium plating."""
-        # Li plating increases resistance -> higher voltage drop, slower response
-        electrical = electrical * 1.2  # Increase amplitude
-        electrical = np.convolve(electrical, np.ones(5)/5, mode='same')  # Slightly smear (slow down)
-        # Ultrasonic: plating may increase stiffness -> slight change in ToF
-        ultrasonic = np.roll(ultrasonic, shift=2)  # Delay echo slightly
-        # Thermal: plating may affect heat dissipation
-        thermal = thermal * 0.9  # Slightly lower thermal response
+        """Modify signals to simulate lithium plating (anode diffusion tail, ToF advance + phase flip)."""
+        t = np.linspace(0, 1, self.seq_length)
+        electrical = np.exp(-t / 0.28) - 0.35 * np.exp(-t / 0.02) + 0.15 * np.exp(-t / 0.8)
+        pulse = np.exp(-((t - 0.25) ** 2) / (2 * 0.02 ** 2))
+        echo = -0.65 * np.exp(-((t - 0.56) ** 2) / (2 * 0.018 ** 2))  # Earlier ToF & phase flip
+        ultrasonic = pulse + echo
+        thermal = np.exp(-t / 0.35) * (1 - np.exp(-t / 0.05))
         return electrical, ultrasonic, thermal
 
     def _apply_active_material_loss(self, electrical, ultrasonic, thermal):
-        """Modify signals to simulate active material loss."""
-        # Active material loss reduces capacity -> lower voltage signal
-        electrical = electrical * 0.8
-        # Ultrasonic: material loss may change density -> affect speed of sound
-        ultrasonic = ultrasonic * 0.9  # Reduce amplitude
-        # Thermal: less material -> lower thermal mass -> faster response
-        thermal = np.convolve(thermal, np.ones(3)/3, mode='same')  # Slightly sharper
+        """Modify signals to simulate active material loss (fast depletion, delayed & attenuated ToF)."""
+        t = np.linspace(0, 1, self.seq_length)
+        electrical = np.exp(-t / 0.04) - 0.60 * np.exp(-t / 0.008)
+        pulse = np.exp(-((t - 0.25) ** 2) / (2 * 0.02 ** 2))
+        echo = 0.35 * np.exp(-((t - 0.66) ** 2) / (2 * 0.025 ** 2))  # Delayed ToF & attenuation
+        ultrasonic = pulse + echo
+        thermal = (1 - np.exp(-t / 0.015)) * np.exp(-t / 0.15)  # Fast heating
         return electrical, ultrasonic, thermal
 
     def _apply_electrolyte_decomposition(self, electrical, ultrasonic, thermal):
-        """Modify signals to simulate electrolyte decomposition."""
-        # Electrolyte decomposition increases impedance and may cause gas
-        electrical = electrical * 1.1 + 0.05 * np.random.randn(self.seq_length)  # Increase impedance and noise
-        # Ultrasonic: gas bubbles scatter sound -> attenuate signal
-        attenuation = np.exp(-np.linspace(0, 0.5, self.seq_length))
-        ultrasonic = ultrasonic * attenuation
-        # Thermal: decomposition may be exothermic/endothermic
-        thermal = thermal + 0.1 * np.sin(np.linspace(0, 4*np.pi, self.seq_length))  # Add oscillation
+        """Modify signals to simulate electrolyte decomposition (high impedance, acoustic scattering, Joule heating)."""
+        t = np.linspace(0, 1, self.seq_length)
+        electrical = np.exp(-t / 0.08) + 0.30 * np.exp(-t / 0.40) + 0.08 * np.sin(12 * np.pi * t) * np.exp(-3 * t)
+        pulse = np.exp(-((t - 0.25) ** 2) / (2 * 0.02 ** 2))
+        echo = 0.40 * np.exp(-((t - 0.62) ** 2) / (2 * 0.035 ** 2)) + 0.06 * np.sin(30 * np.pi * t)
+        ultrasonic = pulse + echo
+        thermal = (1 - np.exp(-t / 0.04)) * np.exp(-t / 0.40) + 0.12 * np.sin(2 * np.pi * t)
         return electrical, ultrasonic, thermal
 
     def _apply_gas_generation(self, electrical, ultrasonic, thermal):
-        """Modify signals to simulate gas generation."""
-        # Gas generation increases internal pressure, may affect electrical contacts slightly
-        electrical = electrical * 0.95  # Slight increase in resistance
-        # Ultrasonic: gas layers reflect/scatter -> strong attenuation and multiple echoes
-        attenuation = np.exp(-np.linspace(0, 1, self.seq_length) * 0.7)
-        ultrasonic = ultrasonic * attenuation
-        # Add a secondary echo from gas layer
-        echo_delay = int(0.2 * self.seq_length)
-        if echo_delay < self.seq_length:
-            ultrasonic[echo_delay:] += 0.3 * ultrasonic[:self.seq_length - echo_delay]
-        # Thermal: gas generation may affect thermal conductivity
-        thermal = thermal * 0.9
+        """Modify signals to simulate gas generation (multiple echo reverberation, thermal insulation)."""
+        t = np.linspace(0, 1, self.seq_length)
+        electrical = np.exp(-t / 0.12) - 0.40 * np.exp(-t / 0.015) + 0.04 * np.sin(6 * np.pi * t)
+        pulse = np.exp(-((t - 0.25) ** 2) / (2 * 0.02 ** 2))
+        echo1 = 0.12 * np.exp(-((t - 0.60) ** 2) / (2 * 0.015 ** 2))
+        rev1 = 0.25 * np.exp(-((t - 0.42) ** 2) / (2 * 0.02 ** 2))
+        rev2 = 0.18 * np.exp(-((t - 0.72) ** 2) / (2 * 0.02 ** 2))
+        ultrasonic = pulse + echo1 + rev1 + rev2
+        thermal = np.zeros_like(t)
+        thermal[t > 0.05] = (1 - np.exp(-(t[t > 0.05] - 0.05) / 0.15)) * np.exp(-t[t > 0.05] / 0.35)
         return electrical, ultrasonic, thermal
 
     def _apply_internal_short(self, electrical, ultrasonic, thermal):
-        """Modify signals to simulate internal short."""
-        # Internal short causes self-discharge, voltage drop
-        electrical = electrical * 0.7  # Significant voltage drop
-        # Add high frequency noise from short bursts
-        electrical += 0.1 * np.random.randn(self.seq_length)
-        # Ultrasonic: short may cause mechanical vibration or temperature spike
-        ultrasonic = ultrasonic * 1.1  # Slight increase in amplitude due to vibration
-        # Thermal: short causes local heating
-        thermal = thermal + 0.3 * np.exp(-np.linspace(0, 5, self.seq_length))  # Add heating transient
+        """Modify signals to simulate internal short (severe self-discharge, acoustic emission, rapid heating)."""
+        t = np.linspace(0, 1, self.seq_length)
+        electrical = -0.80 * (1 - np.exp(-t / 0.05)) + np.exp(-t / 0.02)
+        burst1 = 0.80 * np.exp(-((t - 0.15) ** 2) / (2 * 0.01 ** 2))
+        burst2 = 0.60 * np.exp(-((t - 0.48) ** 2) / (2 * 0.015 ** 2))
+        ultrasonic = burst1 + burst2
+        thermal = (1 - np.exp(-t / 0.02)) + 0.80 * (t ** 2)
         return electrical, ultrasonic, thermal
 
     def _add_noise(self, signal, noise_level=0.02):

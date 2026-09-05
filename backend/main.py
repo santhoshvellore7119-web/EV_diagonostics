@@ -28,6 +28,8 @@ project_root = os.path.dirname(backend_dir)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
+from common.diagnostic_schema import DiagnosticFrame
+
 # Import ingestors, ML processor, and Rebalancing processor
 try:
     from .ingest.threed import ThreedIngestor
@@ -442,7 +444,8 @@ def _generate_fallback_frame() -> Dict[str, Any]:
         "simulation_noiseLevel": 0.05,
         "simulation_stepCount": 0
     }
-    return frame
+    diag = DiagnosticFrame.from_dict(frame)
+    return diag.to_dict()
 
 
 if __name__ == "__main__":

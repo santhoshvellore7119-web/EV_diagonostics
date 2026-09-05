@@ -134,13 +134,15 @@ class RebalancingProcessor:
 
     def _generate_action_reason(self, degradation_mode_idx: int, degradation_prob: float,
                                soh: float, recovery_action: str) -> str:
-        if not recovery_action or recovery_action == 'none':
-            if degradation_prob < 0.60:
+        if not recovery_action or str(recovery_action).lower() == 'none':
+            if degradation_mode_idx == 0:
+                return "System operating nominally. Cell balance verified."
+            elif degradation_prob < 0.60:
                 return "Degradation probability too low to justify active recovery."
             elif soh < 60.0:
                 return "Severe degradation (SOH < 60%), active recovery unlikely to be effective."
             else:
-                return "System operating nominally. Cell balance verified."
+                return "Cell under passive monitoring. No rebalancing required."
 
         mode_names = [
             'HEALTHY', 'LI_PLATING', 'ACTIVE_MATERIAL_LOSS',

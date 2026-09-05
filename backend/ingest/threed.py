@@ -14,10 +14,15 @@ from typing import Optional, Dict, Any
 import sys
 import os
 
-# Add the simulation_3d_demo directory to the path so we can import the module
-sim_path = os.path.join(os.path.dirname(__file__), '..', '..', 'simulation_3d_demo')
+# Add the simulation_3d_demo and common directories to path
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+sim_path = os.path.join(project_root, 'simulation_3d_demo')
 if sim_path not in sys.path:
     sys.path.append(sim_path)
+
+from common.diagnostic_schema import DiagnosticFrame
 
 try:
     from ev_battery_3d_simulation import EVBattery3DSimulator
@@ -283,7 +288,8 @@ class ThreedIngestor:
         # Calculate power
         frame["electrical_power"] = frame["electrical_voltage"] * frame["electrical_current"]
 
-        return frame
+        diag = DiagnosticFrame.from_dict(frame)
+        return diag.to_dict()
 
 
 # For testing standalone
