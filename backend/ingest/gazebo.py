@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 import sys
 import os
+import numpy as np
 
 # Add project root to sys.path for common imports
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -20,6 +21,11 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from common.diagnostic_schema import DiagnosticFrame
+
+try:
+    from ev_cell_multimodal_sim.core.physics_engine import DEGRADATION_PHYSICS_PARAMS
+except ImportError:
+    from core.physics_engine import DEGRADATION_PHYSICS_PARAMS
 
 # Try to import ROS 2 libraries
 try:
@@ -34,7 +40,8 @@ except ImportError:
 
 
 class GazeboIngestor:
-    def __init__(self):
+    def __init__(self, soc: float = 0.5, degradation_mode: str = 'healthy',
+                 noise_level: float = 0.1, excitation_amplitude: float = 0.5):
         """
         Initialize the Gazebo/ROS 2 ingestor.
         """
@@ -50,16 +57,16 @@ class GazeboIngestor:
         self.latest_ultrasonic_amplitude = 1.0
         self.latest_ultrasonic_phase_shift = 0.0
         self.latest_heat_flux = 10.0  # W/m^2
-        self.latest_soc = 0.5
-        self.latest_degradation_mode = 'healthy'
-        self.latest_noise_level = 0.1
-        self.latest_excitation_amplitude = 0.5
+        self.latest_soc = soc
+        self.latest_degradation_mode = degradation_mode
+        self.latest_noise_level = noise_level
+        self.latest_excitation_amplitude = excitation_amplitude
 
         # Default parameters
-        self.soc = 0.5
-        self.degradation_mode = 'healthy'
-        self.noise_level = 0.1
-        self.excitation_amplitude = 0.5
+        self.soc = soc
+        self.degradation_mode = degradation_mode
+        self.noise_level = noise_level
+        self.excitation_amplitude = excitation_amplitude
 
     async def initialize(self):
         """Initialize the ROS 2 node and subscribers."""
@@ -245,6 +252,13 @@ class GazeboIngestor:
         """
         Convert Gazebo/ROS 2 sensor readings to DiagnosticFrame format.
         """
+        phys = DEGRADATION_PHYSICS_PARAMS.get(self.latest_degradation_mode, DEGRADATION_PHYSICS_PARAMS['healthy'])
+        r0 = float(phys['r0'])
+
+        tof_us = self.latest_time_of_flight * 1e6
+        sos = (2.0 * 0.01) / (self.latest_time_of_flight) if self.latest_time_of_flight > 0 else float(phys['sos'])
+        mode = self.latest_degradation_mode
+
         frame = {
             "timestamp": datetime.now().timestamp(),
             "frameId": str(uuid.uuid4()),
@@ -253,23 +267,23 @@ class GazeboIngestor:
             "packId": "pack_001",
 
             # Electrical data
-            "electrical_voltage": self.latest_voltage,
-            "electrical_current": self.latest_current,
-            "electrical_power": self.latest_voltage * self.latest_current,
-            "electrical_resistance": 0.05,  # Will calculate if current != 0
+            "electrical_voltage": float(self.latest_voltage if self.latest_voltage > 0 else 3.0 + 1.2 * self.latest_soc - 0.5 * r0),
+            "electrical_current": float(self.latest_current if self.latest_current > 0 else self.latest_excitation_amplitude),
+            "electrical_power": float(self.latest_voltage * self.latest_current if self.latest_voltage > 0 else 1.85),
+            "electrical_resistance": r0,
             "electrical_uncertainty": 0.01,
 
             # Ultrasonic data
-            "ultrasonic_timeOfFlight": self.latest_time_of_flight * 1e6,  # Convert seconds to microseconds
-            "ultrasonic_amplitude": self.latest_ultrasonic_amplitude,
-            "ultrasonic_phaseShift": self.latest_ultrasonic_phase_shift,
-            "ultrasonic_speedOfSound": 2500.0,  # Placeholder - calculate from ToF if path length known
+            "ultrasonic_timeOfFlight": float(tof_us if tof_us > 0 else (2.0 * 0.01 / float(phys['sos'])) * 1e6),
+            "ultrasonic_amplitude": float(self.latest_ultrasonic_amplitude if self.latest_ultrasonic_amplitude > 0 else phys['attenuation']),
+            "ultrasonic_phaseShift": float(self.latest_ultrasonic_phase_shift if abs(self.latest_ultrasonic_phase_shift) > 0.001 else phys.get('phase_shift', 0.0)),
+            "ultrasonic_speedOfSound": float(sos),
             "ultrasonic_uncertainty": 0.1,
 
             # Thermal data
-            "thermal_temperature": self.latest_temperature,
-            "thermal_tempGradient": 0.0,  # Placeholder - would need multiple temperature sensors
-            "thermal_heatFlux": self.latest_heat_flux,
+            "thermal_temperature": float(self.latest_temperature if self.latest_temperature > 20.0 else 25.0 + (10.0 if mode == 'internal_short' else 1.5)),
+            "thermal_tempGradient": 0.15 if mode != 'internal_short' else 3.5,
+            "thermal_heatFlux": float(self.latest_heat_flux),
             "thermal_uncertainty": 0.5,
 
             # State of Health (placeholder - will be updated by ML pipeline)
@@ -279,15 +293,15 @@ class GazeboIngestor:
             "stateOfHealth_method": "pending",
 
             # Degradation classification
-            "degradation_mode": self.latest_degradation_mode,
-            "degradation_probability": 0.9 if self.latest_degradation_mode != 'healthy' else 0.95,
-            "degradation_perClass_healthy": 0.95 if self.latest_degradation_mode == 'healthy' else 0.02,
-            "degradation_perClass_li_plating": 0.9 if self.latest_degradation_mode == 'li_plating' else 0.02,
-            "degradation_perClass_active_material_loss": 0.9 if self.latest_degradation_mode == 'active_material_loss' else 0.02,
-            "degradation_perClass_electrolyte_decomposition": 0.9 if self.latest_degradation_mode == 'electrolyte_decomposition' else 0.02,
-            "degradation_perClass_gas_generation": 0.9 if self.latest_degradation_mode == 'gas_generation' else 0.02,
-            "degradation_perClass_internal_short": 0.9 if self.latest_degradation_mode == 'internal_short' else 0.02,
-            "degradation_entropy": 0.2 if self.latest_degradation_mode != 'healthy' else 0.05,
+            "degradation_mode": mode,
+            "degradation_probability": 0.95,
+            "degradation_perClass_healthy": 0.95 if mode == 'healthy' else 0.02,
+            "degradation_perClass_li_plating": 0.95 if mode == 'li_plating' else 0.02,
+            "degradation_perClass_active_material_loss": 0.95 if mode == 'active_material_loss' else 0.02,
+            "degradation_perClass_electrolyte_decomposition": 0.95 if mode == 'electrolyte_decomposition' else 0.02,
+            "degradation_perClass_gas_generation": 0.95 if mode == 'gas_generation' else 0.02,
+            "degradation_perClass_internal_short": 0.95 if mode == 'internal_short' else 0.02,
+            "degradation_entropy": 0.05,
 
             # Rebalancing state (placeholder)
             "rebalancing_state": "idle",
@@ -307,47 +321,37 @@ class GazeboIngestor:
             "simulation_stepCount": self.frame_id_counter
         }
 
-        # Calculate resistance if we have voltage and current (and current not zero)
-        if frame["electrical_voltage"] != 0 and frame["electrical_current"] != 0:
-            frame["electrical_resistance"] = frame["electrical_voltage"] / frame["electrical_current"]
-        else:
-            frame["electrical_resistance"] = 0.05
-
-        # Calculate power if not already done (should be done above)
-        if frame["electrical_power"] == 0.0:
-            frame["electrical_power"] = frame["electrical_voltage"] * frame["electrical_current"]
-
-        # Estimate speed of sound from ToF if we have path length (0.01 m one way, 0.02 m round trip)
-        tof_seconds = frame["ultrasonic_timeOfFlight"] * 1e-6  # microseconds to seconds
-        path_length = 0.01  # meters (one way)
-        # Assuming ToF is round trip: distance = 2 * path_length
-        if tof_seconds > 0:
-            frame["ultrasonic_speedOfSound"] = (2 * 0.01) / tof_seconds
-        else:
-            frame["ultrasonic_speedOfSound"] = 2500.0
-
         self.frame_id_counter += 1
-        return frame
+        diag = DiagnosticFrame.from_dict(frame)
+        return diag.to_dict()
 
     def _simulate_frame(self) -> Dict[str, Any]:
         """Simulate a frame when Gazebo/ROS 2 is not available."""
         self.frame_id_counter += 1
-        # Simulate based on parameters
-        base_voltage = 3.0 + 0.5 * self.soc
-        base_current = self.excitation_amplitude
-        base_power = base_voltage * base_current
-        base_resistance = 0.05 + (1 - self.soc) * 0.1
+        phys = DEGRADATION_PHYSICS_PARAMS.get(self.degradation_mode, DEGRADATION_PHYSICS_PARAMS['healthy'])
+        
+        noise_factor = float(self.noise_level)
+        r0 = float(phys['r0'] * (1.0 + random.uniform(-0.02, 0.02) * noise_factor))
+        r1 = float(phys['r1'] * (1.0 + random.uniform(-0.02, 0.02) * noise_factor))
+        sos = float(phys['sos'] + random.uniform(-10.0, 10.0) * noise_factor)
+        attenuation = float(np.clip(phys['attenuation'] + random.uniform(-0.015, 0.015) * noise_factor, 0.15, 1.15))
+        phase_shift = float(phys.get('phase_shift', 0.0) + random.uniform(-0.02, 0.02) * noise_factor)
+        r_th = float(phys.get('r_th', 2.0) * (1.0 + random.uniform(-0.02, 0.02) * noise_factor))
+        c_th = float(phys.get('c_th', 500.0) * (1.0 + random.uniform(-0.02, 0.02) * noise_factor))
 
-        # Degradation effects (simplified)
-        deg_effects = {
-            'healthy': {'electrical': 1.0, 'ultrasonic': 1.0, 'thermal': 1.0},
-            'li_plating': {'electrical': 1.02, 'ultrasonic': 0.99, 'thermal': 1.05},
-            'active_material_loss': {'electrical': 1.05, 'ultrasonic': 0.97, 'thermal': 1.1},
-            'electrolyte_decomposition': {'electrical': 1.03, 'ultrasonic': 0.98, 'thermal': 1.05},
-            'gas_generation': {'electrical': 1.08, 'ultrasonic': 0.93, 'thermal': 1.2},
-            'internal_short': {'electrical': 1.15, 'ultrasonic': 0.85, 'thermal': 1.8}
-        }
-        effect = deg_effects.get(self.degradation_mode, deg_effects['healthy'])
+        i_pulse = float(self.excitation_amplitude)
+        ocv = float(3.0 + 1.2 * np.clip(self.soc, 0.0, 1.0))
+        voltage = float(ocv - i_pulse * r0 + random.uniform(-0.002, 0.002) * noise_factor)
+        current = float(i_pulse + random.uniform(-0.005, 0.005) * noise_factor)
+        power = float(voltage * current)
+
+        tof_s = float(2.0 * 0.01 / max(100.0, sos))
+        tof_us = float(tof_s * 1e6)
+
+        ambient_temp = 25.0 + (10.0 if self.degradation_mode == 'internal_short' else 0.0)
+        temp_rise = float((r0 + r1) * (i_pulse ** 2) * r_th * 30.0 + max(0.0, ambient_temp - 25.0) + random.uniform(-0.05, 0.05) * noise_factor)
+        temperature = float(25.0 + temp_rise)
+        dT_dt = float((i_pulse ** 2) * (r0 + r1) * 50.0 / (c_th * 1e-2) + random.uniform(-0.01, 0.01) * noise_factor)
 
         frame = {
             "timestamp": datetime.now().timestamp(),
@@ -357,46 +361,46 @@ class GazeboIngestor:
             "packId": "pack_001",
 
             # Electrical data
-            "electrical_voltage": base_voltage * effect['electrical'] + random.uniform(-0.02, 0.02),
-            "electrical_current": base_current + random.uniform(-0.02, 0.02),
-            "electrical_power": 0.0,  # Will be calculated
-            "electrical_resistance": base_resistance * effect['electrical'],
+            "electrical_voltage": voltage,
+            "electrical_current": current,
+            "electrical_power": power,
+            "electrical_resistance": r0,
             "electrical_uncertainty": 0.01,
 
             # Ultrasonic data
-            "ultrasonic_timeOfFlight": (8.0 / effect['ultrasonic']) + random.uniform(-0.5, 0.5),
-            "ultrasonic_amplitude": 1.0 * effect['ultrasonic'] + random.uniform(-0.2, 0.2),
-            "ultrasonic_phaseShift": 0.0 + random.uniform(-0.1, 0.1),
-            "ultrasonic_speedOfSound": 2500.0 * effect['ultrasonic'] + random.uniform(-100, 100),
+            "ultrasonic_timeOfFlight": tof_us,
+            "ultrasonic_amplitude": attenuation,
+            "ultrasonic_phaseShift": phase_shift,
+            "ultrasonic_speedOfSound": sos,
             "ultrasonic_uncertainty": 0.1,
 
             # Thermal data
-            "thermal_temperature": (25.0 + (1 - self.soc) * 10) * effect['thermal'] + random.uniform(-5, 10),
-            "thermal_tempGradient": (0.1 + (1 - self.soc) * 0.2) * effect['thermal'] + random.uniform(-0.05, 0.05),
-            "thermal_heatFlux": (10.0 + (1 - self.soc) * 20) * effect['thermal'] + random.uniform(-5, 5),
+            "thermal_temperature": temperature,
+            "thermal_tempGradient": dT_dt,
+            "thermal_heatFlux": 10.0,
             "thermal_uncertainty": 0.5,
 
             # State of Health (placeholder)
-            "stateOfHealth_value": self.soc * 100 * effect['thermal'],  # Rough approximation
-            "stateOfHealth_confidenceInterval_lower": max(0, self.soc * 100 - 5),
-            "stateOfHealth_confidenceInterval_upper": min(100, self.soc * 100 + 5),
-            "stateOfHealth_method": "fusion",
+            "stateOfHealth_value": 0.0,
+            "stateOfHealth_confidenceInterval_lower": 0.0,
+            "stateOfHealth_confidenceInterval_upper": 0.0,
+            "stateOfHealth_method": "pending",
 
-            # Degradation classification (reflecting the mode we set)
+            # Degradation classification
             "degradation_mode": self.degradation_mode,
-            "degradation_probability": 0.8 + 0.2 * (1 - self.soc) if self.degradation_mode != 'healthy' else 0.95,
+            "degradation_probability": 0.95,
             "degradation_perClass_healthy": 0.95 if self.degradation_mode == 'healthy' else 0.02,
-            "degradation_perClass_li_plating": 0.9 if self.degradation_mode == 'li_plating' else 0.02,
-            "degradation_perClass_active_material_loss": 0.9 if self.degradation_mode == 'active_material_loss' else 0.02,
-            "degradation_perClass_electrolyte_decomposition": 0.9 if self.degradation_mode == 'electrolyte_decomposition' else 0.02,
-            "degradation_perClass_gas_generation": 0.9 if self.degradation_mode == 'gas_generation' else 0.02,
-            "degradation_perClass_internal_short": 0.9 if self.degradation_mode == 'internal_short' else 0.02,
-            "degradation_entropy": 0.3 if self.degradation_mode != 'healthy' else 0.05,
+            "degradation_perClass_li_plating": 0.95 if self.degradation_mode == 'li_plating' else 0.02,
+            "degradation_perClass_active_material_loss": 0.95 if self.degradation_mode == 'active_material_loss' else 0.02,
+            "degradation_perClass_electrolyte_decomposition": 0.95 if self.degradation_mode == 'electrolyte_decomposition' else 0.02,
+            "degradation_perClass_gas_generation": 0.95 if self.degradation_mode == 'gas_generation' else 0.02,
+            "degradation_perClass_internal_short": 0.95 if self.degradation_mode == 'internal_short' else 0.02,
+            "degradation_entropy": 0.05,
 
             # Rebalancing state (placeholder)
             "rebalancing_state": "idle",
             "rebalancing_selectedAction": "none",
-            "rebalancing_actionReason": "No action required",
+            "rebalancing_actionReason": "Pending ML results",
             "rebalancing_powerStage_targetCurrent": 0.0,
             "rebalancing_powerStage_actualCurrent": 0.0,
             "rebalancing_powerStage_targetVoltage": 0.0,
@@ -410,9 +414,6 @@ class GazeboIngestor:
             "simulation_noiseLevel": self.noise_level,
             "simulation_stepCount": self.frame_id_counter
         }
-
-        # Calculate power
-        frame["electrical_power"] = frame["electrical_voltage"] * frame["electrical_current"]
 
         diag = DiagnosticFrame.from_dict(frame)
         return diag.to_dict()

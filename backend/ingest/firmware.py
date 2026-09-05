@@ -20,6 +20,11 @@ if project_root not in sys.path:
 from common.diagnostic_schema import DiagnosticFrame
 
 try:
+    from ev_cell_multimodal_sim.core.physics_engine import DEGRADATION_PHYSICS_PARAMS
+except ImportError:
+    from core.physics_engine import DEGRADATION_PHYSICS_PARAMS
+
+try:
     import serial  # pySerial for serial communication
     import serial.tools.list_ports
     SERIAL_AVAILABLE = True
@@ -170,11 +175,13 @@ class FirmwareIngestor:
     def _simulate_frame(self) -> Dict[str, Any]:
         """Simulate a frame for testing when no firmware is connected."""
         self.frame_id_counter += 1
-        # Simulate realistic values
-        base_voltage = 3.5 + random.uniform(-0.2, 0.2)
-        base_current = 2.0 + random.uniform(-0.5, 0.5)
-        base_power = base_voltage * base_current
-        base_resistance = 0.05 + random.uniform(-0.01, 0.01)
+        phys = DEGRADATION_PHYSICS_PARAMS['healthy']
+        r0 = float(phys['r0'])
+        
+        voltage = float(3.65 + random.uniform(-0.01, 0.01))
+        current = float(0.50 + random.uniform(-0.005, 0.005))
+        power = float(voltage * current)
+        tof_us = float((2.0 * 0.01 / phys['sos']) * 1e6 + random.uniform(-0.02, 0.02))
 
         return {
             "timestamp": datetime.now().timestamp(),
@@ -184,30 +191,30 @@ class FirmwareIngestor:
             "packId": "pack_001",
 
             # Electrical data
-            "electrical_voltage": base_voltage + random.uniform(-0.02, 0.02),
-            "electrical_current": base_current + random.uniform(-0.02, 0.02),
-            "electrical_power": base_power + random.uniform(-0.1, 0.1),
-            "electrical_resistance": base_resistance,
+            "electrical_voltage": voltage,
+            "electrical_current": current,
+            "electrical_power": power,
+            "electrical_resistance": r0,
             "electrical_uncertainty": 0.01,
 
             # Ultrasonic data
-            "ultrasonic_timeOfFlight": 8.0 + random.uniform(-0.5, 0.5),
-            "ultrasonic_amplitude": 1.0 + random.uniform(-0.2, 0.2),
-            "ultrasonic_phaseShift": 0.0 + random.uniform(-0.1, 0.1),
-            "ultrasonic_speedOfSound": 2500.0 + random.uniform(-100, 100),
+            "ultrasonic_timeOfFlight": tof_us,
+            "ultrasonic_amplitude": float(phys['attenuation']),
+            "ultrasonic_phaseShift": 0.0,
+            "ultrasonic_speedOfSound": float(phys['sos']),
             "ultrasonic_uncertainty": 0.1,
 
             # Thermal data
-            "thermal_temperature": 25.0 + random.uniform(-5, 10),
-            "thermal_tempGradient": 0.1 + random.uniform(-0.05, 0.05),
-            "thermal_heatFlux": 10.0 + random.uniform(-5, 5),
+            "thermal_temperature": float(25.5 + random.uniform(0.0, 0.5)),
+            "thermal_tempGradient": 0.12,
+            "thermal_heatFlux": 10.0,
             "thermal_uncertainty": 0.5,
 
             # State of Health (placeholder - will be updated by ML)
-            "stateOfHealth_value": 85.0 + random.uniform(-10, 10),
-            "stateOfHealth_confidenceInterval_lower": 80.0,
-            "stateOfHealth_confidenceInterval_upper": 90.0,
-            "stateOfHealth_method": "fusion",
+            "stateOfHealth_value": 0.0,
+            "stateOfHealth_confidenceInterval_lower": 0.0,
+            "stateOfHealth_confidenceInterval_upper": 0.0,
+            "stateOfHealth_method": "pending",
 
             # Degradation classification (placeholder)
             "degradation_mode": "healthy",
@@ -218,7 +225,7 @@ class FirmwareIngestor:
             "degradation_perClass_electrolyte_decomposition": 0.01,
             "degradation_perClass_gas_generation": 0.01,
             "degradation_perClass_internal_short": 0.01,
-            "degradation_entropy": 0.1,
+            "degradation_entropy": 0.05,
 
             # Rebalancing state (placeholder)
             "rebalancing_state": "idle",
@@ -232,10 +239,10 @@ class FirmwareIngestor:
             "rebalancing_executionTime": 0.0,
 
             # Simulation fields
-            "simulation_soc": None,
-            "simulation_excitationAmplitude": None,
-            "simulation_noiseLevel": None,
-            "simulation_stepCount": None
+            "simulation_soc": 0.55,
+            "simulation_excitationAmplitude": 0.5,
+            "simulation_noiseLevel": 0.05,
+            "simulation_stepCount": self.frame_id_counter
         }
         diag = DiagnosticFrame.from_dict(frame)
         return diag.to_dict()

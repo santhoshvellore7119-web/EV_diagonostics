@@ -19,6 +19,7 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from common.diagnostic_schema import DiagnosticFrame
+from ev_cell_multimodal_sim.core.physics_engine import DEGRADATION_PHYSICS_PARAMS
 
 try:
     import fmi
@@ -27,7 +28,8 @@ except ImportError:
     print("Warning: fmi-python not installed. Simulink ingestor will run in simulation mode.")
 
 class SimulinkIngestor:
-    def __init__(self, fmu_path: str, soc: float = 0.5, excitation_amplitude: float = 0.5):
+    def __init__(self, fmu_path: str, soc: float = 0.5, excitation_amplitude: float = 0.5,
+                 degradation_mode: str = "healthy", noise_level: float = 0.05):
         """
         Initialize the Simulink ingestor.
 
@@ -35,10 +37,14 @@ class SimulinkIngestor:
             fmu_path: Path to the exported FMU file.
             soc: Initial state of charge (0-1).
             excitation_amplitude: Excitation pulse amplitude (A).
+            degradation_mode: Simulated degradation mode.
+            noise_level: Gaussian noise factor.
         """
         self.fmu_path = fmu_path
         self.soc = soc
         self.excitation_amplitude = excitation_amplitude
+        self.degradation_mode = degradation_mode
+        self.noise_level = noise_level
         self.fmu = None
         self.is_initialized = False
         self.time = 0.0
@@ -152,6 +158,12 @@ class SimulinkIngestor:
         """
         Convert FMU outputs to DiagnosticFrame format.
         """
+        mode = self.degradation_mode
+        phys = DEGRADATION_PHYSICS_PARAMS.get(mode, DEGRADATION_PHYSICS_PARAMS['healthy'])
+        r0 = float(outputs.get("resistance", phys['r0']))
+        tof_us = float(outputs.get("tof", (2.0 * 0.01 / phys['sos']) * 1e6))
+        sos = float(outputs.get("speedOfSound", phys['sos']))
+
         frame = {
             "timestamp": datetime.now().timestamp(),
             "frameId": str(uuid.uuid4()),
@@ -160,23 +172,23 @@ class SimulinkIngestor:
             "packId": "pack_001",
 
             # Electrical data
-            "electrical_voltage": outputs.get("voltage", 0.0),
-            "electrical_current": outputs.get("current", 0.0),
-            "electrical_power": outputs.get("power", 0.0),
-            "electrical_resistance": outputs.get("resistance", 0.05),
-            "electrical_uncertainty": 0.01,  # TODO: get from FMU if available
+            "electrical_voltage": float(outputs.get("voltage", 3.0 + 1.2 * self.soc - self.excitation_amplitude * r0)),
+            "electrical_current": float(outputs.get("current", self.excitation_amplitude)),
+            "electrical_power": float(outputs.get("power", 0.0)),
+            "electrical_resistance": r0,
+            "electrical_uncertainty": 0.01,
 
             # Ultrasonic data
-            "ultrasonic_timeOfFlight": outputs.get("tof", 8.0),  # microseconds
-            "ultrasonic_amplitude": outputs.get("amplitude", 1.0),
-            "ultrasonic_phaseShift": outputs.get("phaseShift", 0.0),
-            "ultrasonic_speedOfSound": outputs.get("speedOfSound", 2500.0),
+            "ultrasonic_timeOfFlight": tof_us,
+            "ultrasonic_amplitude": float(outputs.get("amplitude", phys['attenuation'])),
+            "ultrasonic_phaseShift": float(outputs.get("phaseShift", phys.get('phase_shift', 0.0))),
+            "ultrasonic_speedOfSound": sos,
             "ultrasonic_uncertainty": 0.1,
 
             # Thermal data
-            "thermal_temperature": outputs.get("temperature", 25.0),
-            "thermal_tempGradient": outputs.get("tempGradient", 0.1),
-            "thermal_heatFlux": outputs.get("heatFlux", 10.0),
+            "thermal_temperature": float(outputs.get("temperature", 25.0 + (10.0 if mode == 'internal_short' else 1.5))),
+            "thermal_tempGradient": float(outputs.get("tempGradient", 0.15 if mode != 'internal_short' else 3.5)),
+            "thermal_heatFlux": float(outputs.get("heatFlux", 10.0)),
             "thermal_uncertainty": 0.5,
 
             # State of Health (placeholder - will be updated by ML pipeline)
@@ -185,16 +197,16 @@ class SimulinkIngestor:
             "stateOfHealth_confidenceInterval_upper": 0.0,
             "stateOfHealth_method": "pending",
 
-            # Degradation classification (placeholder)
-            "degradation_mode": "unknown",
-            "degradation_probability": 0.0,
-            "degradation_perClass_healthy": 0.0,
-            "degradation_perClass_li_plating": 0.0,
-            "degradation_perClass_active_material_loss": 0.0,
-            "degradation_perClass_electrolyte_decomposition": 0.0,
-            "degradation_perClass_gas_generation": 0.0,
-            "degradation_perClass_internal_short": 0.0,
-            "degradation_entropy": 0.0,
+            # Degradation classification
+            "degradation_mode": mode,
+            "degradation_probability": 0.95,
+            "degradation_perClass_healthy": 0.95 if mode == 'healthy' else 0.01,
+            "degradation_perClass_li_plating": 0.95 if mode == 'li_plating' else 0.01,
+            "degradation_perClass_active_material_loss": 0.95 if mode == 'active_material_loss' else 0.01,
+            "degradation_perClass_electrolyte_decomposition": 0.95 if mode == 'electrolyte_decomposition' else 0.01,
+            "degradation_perClass_gas_generation": 0.95 if mode == 'gas_generation' else 0.01,
+            "degradation_perClass_internal_short": 0.95 if mode == 'internal_short' else 0.01,
+            "degradation_entropy": 0.05,
 
             # Rebalancing state (placeholder)
             "rebalancing_state": "idle",
@@ -210,27 +222,48 @@ class SimulinkIngestor:
             # Simulation fields
             "simulation_soc": self.soc,
             "simulation_excitationAmplitude": self.excitation_amplitude,
-            "simulation_noiseLevel": 0.1,  # Could be added as FMU output
-            "simulation_stepCount": int(self.time / self.step_size)
+            "simulation_noiseLevel": self.noise_level,
+            "simulation_stepCount": int(self.time / self.step_size) if self.step_size > 0 else self.frame_id_counter
         }
 
         # Calculate power if not provided
         if frame["electrical_power"] == 0.0:
             frame["electrical_power"] = frame["electrical_voltage"] * frame["electrical_current"]
 
-        return frame
+        diag = DiagnosticFrame.from_dict(frame)
+        return diag.to_dict()
 
     def _simulate_frame(self) -> Dict[str, Any]:
         """Simulate a frame when FMU is not available."""
         self.frame_id_counter += 1
-        # Simulate realistic values based on SOC and excitation
-        # Simple SOC-dependent voltage
-        base_voltage = 3.0 + 0.5 * self.soc  # Simplified OCV
-        base_current = self.excitation_amplitude
-        base_power = base_voltage * base_current
-        base_resistance = 0.05 + (1 - self.soc) * 0.1  # Higher resistance as SOC decreases
+        phys = DEGRADATION_PHYSICS_PARAMS.get(self.degradation_mode, DEGRADATION_PHYSICS_PARAMS['healthy'])
+        noise_factor = float(self.noise_level)
 
-        return {
+        r0 = float(phys['r0'] * (1.0 + random.uniform(-0.02, 0.02) * noise_factor))
+        r1 = float(phys['r1'] * (1.0 + random.uniform(-0.02, 0.02) * noise_factor))
+        sos = float(phys['sos'] + random.uniform(-10.0, 10.0) * noise_factor)
+        attenuation = float(np.clip(phys['attenuation'] + random.uniform(-0.015, 0.015) * noise_factor, 0.15, 1.15))
+        phase_shift = float(phys.get('phase_shift', 0.0) + random.uniform(-0.02, 0.02) * noise_factor)
+        r_th = float(phys.get('r_th', 2.0) * (1.0 + random.uniform(-0.02, 0.02) * noise_factor))
+        c_th = float(phys.get('c_th', 500.0) * (1.0 + random.uniform(-0.02, 0.02) * noise_factor))
+
+        i_pulse = float(self.excitation_amplitude)
+        ocv = float(3.0 + 1.2 * np.clip(self.soc, 0.0, 1.0))
+        voltage = float(ocv - i_pulse * r0 + random.uniform(-0.002, 0.002) * noise_factor)
+        current = float(i_pulse + random.uniform(-0.005, 0.005) * noise_factor)
+        power = float(voltage * current)
+
+        tof_s = float(2.0 * 0.01 / max(100.0, sos))
+        tof_us = float(tof_s * 1e6)
+
+        ambient_temp = 25.0 + (10.0 if self.degradation_mode == 'internal_short' else 0.0)
+        temp_rise = float((r0 + r1) * (i_pulse ** 2) * r_th * 30.0 + max(0.0, ambient_temp - 25.0) + random.uniform(-0.05, 0.05) * noise_factor)
+        temperature = float(25.0 + temp_rise)
+        temp_gradient = float(0.15 + (3.35 if self.degradation_mode == 'internal_short' else 0.0) + random.uniform(-0.02, 0.02) * noise_factor)
+        heat_flux = float((i_pulse ** 2) * (r0 + r1) * 50.0 + (15.0 if self.degradation_mode == 'internal_short' else 0.0) + random.uniform(-0.1, 0.1) * noise_factor)
+
+        mode = self.degradation_mode
+        frame = {
             "timestamp": datetime.now().timestamp(),
             "frameId": str(uuid.uuid4()),
             "source": "simulink",
@@ -238,46 +271,46 @@ class SimulinkIngestor:
             "packId": "pack_001",
 
             # Electrical data
-            "electrical_voltage": base_voltage + random.uniform(-0.02, 0.02),
-            "electrical_current": base_current + random.uniform(-0.02, 0.02),
-            "electrical_power": base_power + random.uniform(-0.1, 0.1),
-            "electrical_resistance": base_resistance,
+            "electrical_voltage": voltage,
+            "electrical_current": current,
+            "electrical_power": power,
+            "electrical_resistance": r0,
             "electrical_uncertainty": 0.01,
 
             # Ultrasonic data
-            "ultrasonic_timeOfFlight": 8.0 / (1 + 0.1 * (1 - self.soc)) + random.uniform(-0.5, 0.5),  # ToF increases as SOH decreases
-            "ultrasonic_amplitude": 1.0 * (1 - 0.2 * (1 - self.soc)) + random.uniform(-0.2, 0.2),
-            "ultrasonic_phaseShift": 0.0 + random.uniform(-0.1, 0.1),
-            "ultrasonic_speedOfSound": 2500.0 * (1 - 0.05 * (1 - self.soc)) + random.uniform(-100, 100),
+            "ultrasonic_timeOfFlight": tof_us,
+            "ultrasonic_amplitude": attenuation,
+            "ultrasonic_phaseShift": phase_shift,
+            "ultrasonic_speedOfSound": sos,
             "ultrasonic_uncertainty": 0.1,
 
             # Thermal data
-            "thermal_temperature": 25.0 + (1 - self.soc) * 10 + random.uniform(-5, 10),
-            "thermal_tempGradient": 0.1 + (1 - self.soc) * 0.2 + random.uniform(-0.05, 0.05),
-            "thermal_heatFlux": 10.0 + (1 - self.soc) * 20 + random.uniform(-5, 5),
+            "thermal_temperature": temperature,
+            "thermal_tempGradient": temp_gradient,
+            "thermal_heatFlux": heat_flux,
             "thermal_uncertainty": 0.5,
 
             # State of Health (placeholder)
-            "stateOfHealth_value": self.soc * 100,  # Simplified: SOH = SOC * 100 (not realistic but for demo)
-            "stateOfHealth_confidenceInterval_lower": max(0, self.soc * 100 - 5),
-            "stateOfHealth_confidenceInterval_upper": min(100, self.soc * 100 + 5),
-            "stateOfHealth_method": "fusion",
+            "stateOfHealth_value": 0.0,
+            "stateOfHealth_confidenceInterval_lower": 0.0,
+            "stateOfHealth_confidenceInterval_upper": 0.0,
+            "stateOfHealth_method": "pending",
 
-            # Degradation classification (placeholder - based on SOC)
-            "degradation_mode": "healthy" if self.soc > 0.8 else "li_plating" if self.soc > 0.6 else "active_material_loss",
-            "degradation_probability": 0.8 + 0.2 * (1 - self.soc),
-            "degradation_perClass_healthy": max(0, 1 - 2 * (1 - self.soc)),
-            "degradation_perClass_li_plating": max(0, 2 * (1 - self.soc) - 1) if self.soc > 0.4 else 0,
-            "degradation_perClass_active_material_loss": max(0, 2 * (0.6 - self.soc)) if self.soc <= 0.6 else 0,
-            "degradation_perClass_electrolyte_decomposition": 0.0,
-            "degradation_perClass_gas_generation": 0.0,
-            "degradation_perClass_internal_short": 0.0,
-            "degradation_entropy": 0.3,
+            # Degradation classification
+            "degradation_mode": mode,
+            "degradation_probability": 0.95,
+            "degradation_perClass_healthy": 0.95 if mode == 'healthy' else 0.01,
+            "degradation_perClass_li_plating": 0.95 if mode == 'li_plating' else 0.01,
+            "degradation_perClass_active_material_loss": 0.95 if mode == 'active_material_loss' else 0.01,
+            "degradation_perClass_electrolyte_decomposition": 0.95 if mode == 'electrolyte_decomposition' else 0.01,
+            "degradation_perClass_gas_generation": 0.95 if mode == 'gas_generation' else 0.01,
+            "degradation_perClass_internal_short": 0.95 if mode == 'internal_short' else 0.01,
+            "degradation_entropy": 0.05,
 
             # Rebalancing state (placeholder)
             "rebalancing_state": "idle",
             "rebalancing_selectedAction": "none",
-            "rebalancing_actionReason": "No action required",
+            "rebalancing_actionReason": "Pending ML results",
             "rebalancing_powerStage_targetCurrent": 0.0,
             "rebalancing_powerStage_actualCurrent": 0.0,
             "rebalancing_powerStage_targetVoltage": 0.0,
@@ -288,8 +321,8 @@ class SimulinkIngestor:
             # Simulation fields
             "simulation_soc": self.soc,
             "simulation_excitationAmplitude": self.excitation_amplitude,
-            "simulation_noiseLevel": 0.1,
-            "simulation_stepCount": int(self.time / self.step_size)
+            "simulation_noiseLevel": self.noise_level,
+            "simulation_stepCount": self.frame_id_counter
         }
         diag = DiagnosticFrame.from_dict(frame)
         return diag.to_dict()
