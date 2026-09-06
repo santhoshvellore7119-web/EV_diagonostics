@@ -214,6 +214,11 @@ DEGRADATION_PHYSICS_PARAMS = {
         'r_th': 1.8, 'c_th': 500.0, 'gas_reverb': False, 'nominal_soh': 45.0
     }
 }
+
+
+def simulate_cell_from_parameters(
+    soc: float,
+    r0: float = P.R0,
     r1: float = P.R1,
     c1: float = P.C1,
     sos: float = P.SOS,
