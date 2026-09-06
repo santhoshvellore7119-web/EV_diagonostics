@@ -62,11 +62,47 @@ class GazeboIngestor:
         self.latest_noise_level = noise_level
         self.latest_excitation_amplitude = excitation_amplitude
 
-        # Default parameters
-        self.soc = soc
-        self.degradation_mode = degradation_mode
-        self.noise_level = noise_level
-        self.excitation_amplitude = excitation_amplitude
+        # Internal parameters
+        self._soc = soc
+        self._degradation_mode = degradation_mode
+        self._noise_level = noise_level
+        self._excitation_amplitude = excitation_amplitude
+
+    @property
+    def degradation_mode(self) -> str:
+        return self._degradation_mode
+
+    @degradation_mode.setter
+    def degradation_mode(self, value: str):
+        self._degradation_mode = str(value)
+        self.latest_degradation_mode = self._degradation_mode
+
+    @property
+    def soc(self) -> float:
+        return self._soc
+
+    @soc.setter
+    def soc(self, value: float):
+        self._soc = max(0.0, min(1.0, float(value)))
+        self.latest_soc = self._soc
+
+    @property
+    def noise_level(self) -> float:
+        return self._noise_level
+
+    @noise_level.setter
+    def noise_level(self, value: float):
+        self._noise_level = max(0.0, min(1.0, float(value)))
+        self.latest_noise_level = self._noise_level
+
+    @property
+    def excitation_amplitude(self) -> float:
+        return self._excitation_amplitude
+
+    @excitation_amplitude.setter
+    def excitation_amplitude(self, value: float):
+        self._excitation_amplitude = max(0.0, float(value))
+        self.latest_excitation_amplitude = self._excitation_amplitude
 
     async def initialize(self):
         """Initialize the ROS 2 node and subscribers."""

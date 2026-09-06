@@ -46,11 +46,53 @@ class ThreedIngestor:
         self.is_initialized = False
         self.frame_id_counter = 0
 
-        # Default parameters (will be synced with frontend)
-        self.soc = soc
-        self.degradation_mode = degradation_mode
-        self.noise_level = noise_level
-        self.excitation_amplitude = excitation_amplitude
+        # Internal parameters (propagated to simulator via properties)
+        self._soc = soc
+        self._degradation_mode = degradation_mode
+        self._noise_level = noise_level
+        self._excitation_amplitude = excitation_amplitude
+
+    @property
+    def degradation_mode(self) -> str:
+        return self._degradation_mode
+
+    @degradation_mode.setter
+    def degradation_mode(self, value: str):
+        self._degradation_mode = str(value)
+        if self.simulator is not None:
+            self.simulator.degradation_mode = self._degradation_mode
+
+    @property
+    def soc(self) -> float:
+        return self._soc
+
+    @soc.setter
+    def soc(self, value: float):
+        self._soc = max(0.0, min(1.0, float(value)))
+        if self.simulator is not None:
+            self.simulator.soc = self._soc
+
+    @property
+    def noise_level(self) -> float:
+        return self._noise_level
+
+    @noise_level.setter
+    def noise_level(self, value: float):
+        self._noise_level = max(0.0, min(1.0, float(value)))
+        if self.simulator is not None:
+            self.simulator.noise_level = self._noise_level
+
+    @property
+    def excitation_amplitude(self) -> float:
+        return self._excitation_amplitude
+
+    @excitation_amplitude.setter
+    def excitation_amplitude(self, value: float):
+        self._excitation_amplitude = max(0.0, float(value))
+        if self.simulator is not None:
+            self.simulator.excitation_amplitude = self._excitation_amplitude
+            if hasattr(self.simulator, 'params'):
+                self.simulator.params['pulse_amplitude_a'] = self._excitation_amplitude
 
     async def initialize(self):
         """Initialize the 3D simulator."""
@@ -63,13 +105,11 @@ class ThreedIngestor:
             self.simulator = EVBattery3DSimulator(headless=True)
             # Set initial parameters
             await self.set_parameters(
-                soc=self.soc,
-                degradation_mode=self.degradation_mode,
-                noise_level=self.noise_level,
-                excitation_amplitude=self.excitation_amplitude
+                soc=self._soc,
+                degradation_mode=self._degradation_mode,
+                noise_level=self._noise_level,
+                excitation_amplitude=self._excitation_amplitude
             )
-            # Trigger an initial update to set up the visualization (not strictly needed for data)
-            # self.simulator.update_visualization()  # This would try to show GUI; skip for headless
             self.is_initialized = True
             print("3D simulator initialized")
         except Exception as e:
@@ -82,22 +122,13 @@ class ThreedIngestor:
                            excitation_amplitude: Optional[float] = None):
         """Update simulation parameters."""
         if soc is not None:
-            self.soc = max(0.0, min(1.0, soc))
-            if self.simulator:
-                self.simulator.soc = self.soc
+            self.soc = soc
         if degradation_mode is not None:
             self.degradation_mode = degradation_mode
-            if self.simulator:
-                self.simulator.degradation_mode = self.degradation_mode
         if noise_level is not None:
-            self.noise_level = max(0.0, min(1.0, noise_level))
-            if self.simulator:
-                self.simulator.noise_level = self.noise_level
+            self.noise_level = noise_level
         if excitation_amplitude is not None:
-            self.excitation_amplitude = max(0.0, excitation_amplitude)
-            if self.simulator:
-                self.simulator.excitation_amplitude = self.excitation_amplitude
-                self.simulator.params['pulse_amplitude_a'] = self.excitation_amplitude
+            self.excitation_amplitude = excitation_amplitude
 
     async def get_frame(self) -> Optional[Dict[str, Any]]:
         """
@@ -111,6 +142,12 @@ class ThreedIngestor:
             return self._simulate_frame()
 
         try:
+            # Ensure simulator has latest parameters before reading
+            self.simulator.degradation_mode = self._degradation_mode
+            self.simulator.soc = self._soc
+            self.simulator.noise_level = self._noise_level
+            self.simulator.excitation_amplitude = self._excitation_amplitude
+
             # Get sensor readings from the simulator
             readings = self.simulator.get_sensor_readings()
             # Get simulation state for DiagnosticFrame fields

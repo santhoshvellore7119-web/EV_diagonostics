@@ -41,10 +41,10 @@ class SimulinkIngestor:
             noise_level: Gaussian noise factor.
         """
         self.fmu_path = fmu_path
-        self.soc = soc
-        self.excitation_amplitude = excitation_amplitude
-        self.degradation_mode = degradation_mode
-        self.noise_level = noise_level
+        self._soc = soc
+        self._excitation_amplitude = excitation_amplitude
+        self._degradation_mode = degradation_mode
+        self._noise_level = noise_level
         self.fmu = None
         self.is_initialized = False
         self.time = 0.0
@@ -53,6 +53,38 @@ class SimulinkIngestor:
 
         # Variables to store latest outputs from FMU
         self.latest_outputs = {}
+
+    @property
+    def degradation_mode(self) -> str:
+        return self._degradation_mode
+
+    @degradation_mode.setter
+    def degradation_mode(self, value: str):
+        self._degradation_mode = str(value)
+
+    @property
+    def soc(self) -> float:
+        return self._soc
+
+    @soc.setter
+    def soc(self, value: float):
+        self._soc = max(0.0, min(1.0, float(value)))
+
+    @property
+    def noise_level(self) -> float:
+        return self._noise_level
+
+    @noise_level.setter
+    def noise_level(self, value: float):
+        self._noise_level = max(0.0, min(1.0, float(value)))
+
+    @property
+    def excitation_amplitude(self) -> float:
+        return self._excitation_amplitude
+
+    @excitation_amplitude.setter
+    def excitation_amplitude(self, value: float):
+        self._excitation_amplitude = max(0.0, float(value))
 
     async def initialize(self):
         """Initialize the FMU."""

@@ -300,6 +300,45 @@ async def set_mode(mode: str = Query(..., description="Data source mode: live, s
     return {"message": f"Mode set to {mode}", "mode": mode}
 
 
+@app.post("/api/simulation/parameters")
+async def set_simulation_parameters(
+    degradation_mode: Optional[str] = None,
+    soc: Optional[float] = None,
+    noise_level: Optional[float] = None,
+    excitation_amplitude: Optional[float] = None
+):
+    """Dynamically propagate simulation parameters to all ingestors and underlying simulators."""
+    valid_degs = ['healthy', 'li_plating', 'active_material_loss', 'electrolyte_decomposition', 'gas_generation', 'internal_short']
+    if degradation_mode is not None and degradation_mode not in valid_degs:
+        raise HTTPException(status_code=400, detail=f"Invalid degradation_mode. Must be one of {valid_degs}")
+
+    for ing in [threed_ingestor, gazebo_ingestor, simulink_ingestor, firmware_ingestor]:
+        if hasattr(ing, 'set_parameters'):
+            await ing.set_parameters(
+                soc=soc,
+                degradation_mode=degradation_mode,
+                noise_level=noise_level,
+                excitation_amplitude=excitation_amplitude
+            )
+        else:
+            if degradation_mode is not None:
+                ing.degradation_mode = degradation_mode
+            if soc is not None:
+                ing.soc = soc
+            if noise_level is not None:
+                ing.noise_level = noise_level
+            if excitation_amplitude is not None:
+                ing.excitation_amplitude = excitation_amplitude
+
+    return {
+        "status": "updated",
+        "degradation_mode": degradation_mode,
+        "soc": soc,
+        "noise_level": noise_level,
+        "excitation_amplitude": excitation_amplitude
+    }
+
+
 # WebSocket endpoint for real-time frame streaming
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -318,10 +357,22 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_text()
             try:
                 msg = json.loads(data)
-                if msg.get("type") == "set_mode" and msg.get("mode") in ['live', 'simulink', '3d', 'gazebo']:
+                mtype = msg.get("type")
+                if mtype == "set_mode" and msg.get("mode") in ['live', 'simulink', '3d', 'gazebo']:
                     await set_mode(msg["mode"])
-            except Exception:
-                pass
+                elif mtype in ["set_parameters", "set_simulation_parameters", "set_degradation_mode"]:
+                    deg = msg.get("degradation_mode") or msg.get("mode")
+                    soc = msg.get("soc")
+                    noise = msg.get("noise_level")
+                    exc = msg.get("excitation_amplitude")
+                    await set_simulation_parameters(
+                        degradation_mode=deg,
+                        soc=soc,
+                        noise_level=noise,
+                        excitation_amplitude=exc
+                    )
+            except Exception as e:
+                print(f"Error handling websocket client message: {e}")
     except WebSocketDisconnect:
         manager.disconnect(websocket)
     except Exception as e:
