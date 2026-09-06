@@ -2,7 +2,6 @@ import React from 'react';
 import LineChart from './LineChart';
 import { useSelector } from 'react-redux';
 import { RootState } from '../../store';
-import { DiagnosticFrame } from '../../store/diagnosticFrameSlice';
 
 interface VoltageChartProps {
   width?: number;

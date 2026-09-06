@@ -55,8 +55,8 @@
     ylabel('Parameter Estimation Error (%)');
     title('Convergence Comparison: Adaptive vs Fixed Excitation', 'FontWeight', 'bold');
     legend('Location', 'best');
-    text(t*1000*0.7, 1.5, 'Adaptive converges 4x faster', 'Color', 'blue', 'FontWeight', 'bold');
-    text(t*1000*0.7, 1.0, 'Final error 75% lower', 'Color', 'blue', 'FontWeight', 'bold');
+    text(3500, 1.5, 'Adaptive converges 4x faster', 'Color', 'blue', 'FontWeight', 'bold');
+    text(3500, 1.0, 'Final error 75% lower', 'Color', 'blue', 'FontWeight', 'bold');
 
     % Save plot
     png_file1 = fullfile(plots_dir, 'IDP01_Convergence_Comparison.png');
@@ -112,7 +112,7 @@
     title('Worst Case: Internal Short');
     legend('Location', 'best');
 
-    suptitle('Energy Savings: Adaptive vs Fixed Excitation', 'FontWeight', 'bold');
+    sgtitle('Energy Savings: Adaptive vs Fixed Excitation', 'FontWeight', 'bold');
 
     % Save plot
     png_file2 = fullfile(plots_dir, 'IDP02_Energy_Savings_Analysis.png');
@@ -133,12 +133,12 @@
     degradation_factor = 1 + 0.5*(1 - exp(-t/2));  % Increases over time
     true_R0_degraded = true_R0 * degradation_factor;
     true_R1_degraded = true_R1 * degradation_factor;
-    true_C1_degraded = true_C1 / degradation_factor;  % Capacitance decreases with degradation
+    true_C1_degraded = true_C1 ./ degradation_factor;  % Capacitance decreases with degradation
 
     % Estimated parameters with noise and convergence behavior
-    est_R0 = true_R0_degraded .* (1 + 0.05*randn(size(t))) + exp(-t/1)*0.01*randn(size(t));  % Starts noisy, converges
-    est_R1 = true_R1_degraded .* (1 + 0.05*randn(size(t))) + exp(-t/1)*0.005*randn(size(t));
-    est_C1 = true_C1_degraded .* (1 + 0.05*randn(size(t))) + exp(-t/1)*50*randn(size(t));
+    est_R0 = true_R0_degraded .* (1 + 0.05*randn(size(t))) + exp(-t/1) .* (0.01*randn(size(t)));  % Starts noisy, converges
+    est_R1 = true_R1_degraded .* (1 + 0.05*randn(size(t))) + exp(-t/1) .* (0.005*randn(size(t)));
+    est_C1 = true_C1_degraded .* (1 + 0.05*randn(size(t))) + exp(-t/1) .* (50*randn(size(t)));
 
     % Ensure positive values
     est_R0 = max(est_R0, 0.001);
@@ -150,7 +150,7 @@
     hold on;
     plot(t*1000, true_R0_degraded*1000, 'k--', 'LineWidth', 1.5, 'DisplayName', 'True Value');
     hold off;
-    grid on, alpha(0.3);
+    grid on;
     ylabel('R0 (m\Omega)');
     legend('Location', 'best');
     title('Parameter Tracking: Ohmic Resistance (R0)');
@@ -160,7 +160,7 @@
     hold on;
     plot(t*1000, true_R1_degraded*1000, 'k--', 'LineWidth', 1.5, 'DisplayName', 'True Value');
     hold off;
-    grid on, alpha(0.3);
+    grid on;
     ylabel('R1 (m\Omega)');
     legend('Location', 'best');
     title('Parameter Tracking: Polarization Resistance (R1)');
@@ -170,13 +170,13 @@
     hold on;
     plot(t*1000, true_C1_degraded, 'k--', 'LineWidth', 1.5, 'DisplayName', 'True Value');
     hold off;
-    grid on, alpha(0.3);
+    grid on;
     xlabel('Time (ms)');
     ylabel('C1 (F)');
     legend('Location', 'best');
     title('Parameter Tracking: Polarization Capacitance (C1)');
 
-    suptitle('Real-Time Parameter Estimation During Battery Degradation', 'FontWeight', 'bold');
+    sgtitle('Real-Time Parameter Estimation During Battery Degradation', 'FontWeight', 'bold');
 
     % Save plot
     png_file3 = fullfile(plots_dir, 'IDP03_Parameter_Tracking.png');
@@ -206,23 +206,25 @@
     % Plot raw signals
     subplot(3, 1, 1);
     plot(t*1000, electrical_signal*1000, 'r-', 'LineWidth', 1.5);
-    grid on, alpha(0.3);
+    grid on;
     ylabel('Voltage (mV)');
     title('Raw Sensor Signals');
     legend('Electrical', 'Location', 'best');
 
     subplot(3, 1, 2);
     plot(t*1000, ultrasonic_signal*1000, 'b-', 'LineWidth', 1.5);
-    grid on, alpha(0.3);
+    grid on;
     ylabel('Ultrasonic (mV)');
     legend('Ultrasonic', 'Location', 'best');
 
     subplot(3, 1, 3);
     plot(t*1000, thermal_signal*1000, 'g-', 'LineWidth', 1.5);
-    grid on, alpha(0.3);
+    grid on;
     xlabel('Time (ms)');
     ylabel('Temperature (mK)');
     legend('Thermal', 'Location', 'best');
+
+    sgtitle('Multi-Modal Sensor Dynamic Signals', 'FontWeight', 'bold');
 
     % Save plot
     png_file4 = fullfile(plots_dir, 'IDP04_MultiModal_Signals.png');
@@ -244,15 +246,14 @@
     ultrasonic_feature = max(filter(ones(1,50)/50, 1, abs(ultrasonic_signal))) - abs(ultrasonic_signal);
 
     % Thermal feature: rate of temperature rise
-    thermal_feature = gradient(thermal_signal) ./ gradient(t);
+    thermal_feature = gradient(thermal_signal) ./ max(eps, gradient(t));
 
     % Normalize features for visualization
-    electrical_feature_norm = (electrical_feature - min(electrical_feature)) / (max(electrical_feature) - min(electrical_feature));
-    ultrasonic_feature_norm = (ultrasonic_feature - min(ultrasonic_feature)) / (max(ultrasonic_feature) - min(ultrasonic_feature));
-    thermal_feature_norm = (thermal_feature - min(thermal_feature)) / (max(thermal_feature) - min(thermal_feature));
+    electrical_feature_norm = (electrical_feature - min(electrical_feature)) / max(eps, (max(electrical_feature) - min(electrical_feature)));
+    ultrasonic_feature_norm = (ultrasonic_feature - min(ultrasonic_feature)) / max(eps, (max(ultrasonic_feature) - min(ultrasonic_feature)));
+    thermal_feature_norm = (thermal_feature - min(thermal_feature)) / max(eps, (max(thermal_feature) - min(thermal_feature)));
 
     % Simulate confidence scores that would come from evidential DL or uncertainty heads
-    % Higher confidence when features are distinctive and consistent
     electrical_confidence = 0.7 + 0.3*electrical_feature_norm + 0.1*randn(size(t));
     ultrasonic_confidence = 0.6 + 0.2*ultrasonic_feature_norm + 0.1*randn(size(t));
     thermal_confidence = 0.5 + 0.4*thermal_feature_norm + 0.1*randn(size(t));
@@ -270,25 +271,25 @@
 
     subplot(3, 1, 1);
     plot(t*1000, elec_weight, 'r-', 'LineWidth', 2);
-    grid on, alpha(0.3);
+    grid on;
     ylabel('Electrical Weight');
     legend('Electrical Modality Weight', 'Location', 'best');
     title('Confidence-Weighted Fusion: Modality Attention Weights');
 
     subplot(3, 1, 2);
     plot(t*1000, ultra_weight, 'b-', 'LineWidth', 2);
-    grid on, alpha(0.3);
+    grid on;
     ylabel('Ultrasonic Weight');
     legend('Ultrasonic Modality Weight', 'Location', 'best');
 
     subplot(3, 1, 3);
     plot(t*1000, therm_weight, 'g-', 'LineWidth', 2);
-    grid on, alpha(0.3);
+    grid on;
     xlabel('Time (ms)');
     ylabel('Thermal Weight');
     legend('Thermal Modality Weight', 'Location', 'best');
 
-    suptitle('Dynamic Confidence-Weighted Attention in Multi-Modal Fusion', 'FontWeight', 'bold');
+    sgtitle('Dynamic Confidence-Weighted Attention in Multi-Modal Fusion', 'FontWeight', 'bold');
 
     % Save plot
     png_file5 = fullfile(plots_dir, 'IDP05_Fusion_Weights.png');
@@ -313,7 +314,6 @@
     state_sequence((t>=0.5) & (t<0.6)) = 2;
     % ANALYZING for 0.3s
     state_sequence((t>=0.6) & (t<0.9)) = 3;
-    % Based on confidence, go to REBALANCING (high confidence) or RESENSING (low confidence)
     % Simulate medium confidence -> RESENSING then back to SENSING
     state_sequence((t>=0.9) & (t<1.0)) = 4;  % RESENSING
     state_sequence((t>=1.0) & (t<1.1)) = 2;  % Back to SENSING
@@ -344,9 +344,9 @@
             for r = 1:numel(start_indices)
                 t_start = t(start_indices(r));
                 t_end = t(end_indices(r));
-                % Draw colored rectangle for this state region
-                xpatch([t_start t_end t_end t_start]*1000, [-0.5 -0.5 1.5 1.5], ...
-                       state_colors(s,:), 'FaceAlpha', 0.3, 'EdgeColor', 'none');
+                % Draw colored rectangle for this state region using patch
+                patch([t_start t_end t_end t_start]*1000, [-0.5 -0.5 1.5 1.5], ...
+                      state_colors(s,:), 'FaceAlpha', 0.3, 'EdgeColor', 'none');
             end
         end
     end
@@ -355,23 +355,23 @@
     % Add state labels as text
     y_pos = linspace(0.2, 0.8, numel(state_names));
     for s = 1:numel(state_names)
-        text(0.5, y_pos(s), state_names{s}, ...
+        text(500, y_pos(s), state_names{s}, ...
              'HorizontalAlignment', 'center', 'VerticalAlignment', 'middle', ...
              'FontWeight', 'bold', 'FontSize', 10, ...
              'BackgroundColor', 'white', 'EdgeColor', 'none');
     end
 
-    grid on, alpha(0.3);
-    xlabel('Time (s)');
+    grid on;
+    xlabel('Time (ms)');
     ylabel('State Machine State');
     yticks([]);
     yticklabels([]);
     title('State Machine Execution Trace: Closed-Loop Diagnostic Cycle', 'FontWeight', 'bold');
 
     % Add annotations for key transitions
-    annotation('textarrow', [0.3 0.2], [0.8 0.6], 'String', 'Low Confidence\\n\\rightarrow RESENSING', ...
+    annotation('textarrow', [0.3 0.2], [0.8 0.6], 'String', sprintf('Low Confidence\n-> RESENSING'), ...
                'FontSize', 9);
-    annotation('textarrow', [0.7 0.8], [0.2 0.4], 'String', 'High Confidence\\n\\rightarrow REBALANCING', ...
+    annotation('textarrow', [0.7 0.8], [0.2 0.4], 'String', sprintf('High Confidence\n-> REBALANCING'), ...
                'FontSize', 9);
 
     % Save plot
@@ -394,10 +394,8 @@
     % For each test, generate probabilities that favor the true mode
     for test = 1:num_tests
         true_idx = true_mode(test);
-        % Generate Dirichlet-like distribution favoring true class
         raw_scores = rand(1, numel(degradation_modes));
         raw_scores(true_idx) = raw_scores(true_idx) * (3 + 2*rand);  % Boost true class
-        % Convert to probabilities
         class_probabilities(test, :) = raw_scores ./ sum(raw_scores);
     end
 
@@ -420,7 +418,6 @@
 
     % Plot confusion matrix-style visualization
     subplot(1, 2, 1);
-    % Create a heatmap-like display of average probabilities by true mode
     avg_prob_by_true_mode = zeros(numel(degradation_modes), numel(degradation_modes));
     for true_m = 1:numel(degradation_modes)
         for pred_m = 1:numel(degradation_modes)
@@ -431,11 +428,13 @@
         end
     end
 
-    imshow(avg_prob_by_true_mode, 'DisplayRange', [0 1], 'InitialMagnification', 'fit');
+    imagesc(avg_prob_by_true_mode, [0 1]);
+    axis square;
     colormap(parula);
     colorbar;
     set(gca, 'XTick', 1:numel(degradation_modes), 'XTickLabel', degradation_modes, ...
-         'YTick', 1:numel(degradation_modes), 'YTickLabel', degradation_modes);
+             'YTick', 1:numel(degradation_modes), 'YTickLabel', degradation_modes, ...
+             'XTickLabelRotation', 45);
     xlabel('Predicted Mode');
     ylabel('True Mode');
     title(sprintf('Classification Confusion Matrix (Accuracy: %.1f%%)', overall_accuracy));
@@ -443,22 +442,23 @@
     % Plot 2: Bar chart of per-mode accuracy
     subplot(1, 2, 2);
     bars = bar(mode_accuracy);
-    % Color code by accuracy
+    bars.FaceColor = 'flat';
     for m = 1:numel(degradation_modes)
         if mode_accuracy(m) >= 90
-            set(bars(m), 'FaceColor', [0.2 0.8 0.2]);  % Green - excellent
+            bars.CData(m, :) = [0.2 0.8 0.2];  % Green - excellent
         elseif mode_accuracy(m) >= 80
-            set(bars(m), 'FaceColor', [0.4 0.8 0.4]);  % Light green - good
+            bars.CData(m, :) = [0.4 0.8 0.4];  % Light green - good
         elseif mode_accuracy(m) >= 70
-            set(bars(m), 'FaceColor', [0.8 0.8 0.2]);  % Yellow - fair
+            bars.CData(m, :) = [0.8 0.8 0.2];  % Yellow - fair
         else
-            set(bars(m), 'FaceColor', [0.8 0.2 0.2]);  % Red - poor
+            bars.CData(m, :) = [0.8 0.2 0.2];  % Red - poor
         end
     end
-    grid on, alpha(0.3);
+    grid on;
     ylabel('Accuracy (%)');
     title('Per-Mode Classification Accuracy');
-    set(gca, 'XTick', 1:numel(degradation_modes), 'XTickLabel', degradation_modes);
+    set(gca, 'XTick', 1:numel(degradation_modes), 'XTickLabel', degradation_modes, ...
+             'XTickLabelRotation', 45);
     ylim([0 100]);
 
     % Add value labels on bars
@@ -468,7 +468,7 @@
              'FontSize', 9, 'FontWeight', 'bold');
     end
 
-    suptitle('Degradation Mode Classification Performance', 'FontWeight', 'bold');
+    sgtitle('Degradation Mode Classification Performance', 'FontWeight', 'bold');
 
     % Save plot
     png_file7 = fullfile(plots_dir, 'IDP07_Classification_Accuracy.png');
@@ -481,12 +481,11 @@
     fig8 = figure('Position', [100 100 1000 600], 'Color', 'white');
 
     % Metrics to compare: Traditional Fixed-Pulse vs Our Adaptive System
-    metrics = {'Measurement\\nAccuracy', 'Energy\\nEfficiency', 'Test\\nSpeed', 'Adaptability', 'Hardware\\nComplexity'};
+    metrics = {'Measurement Accuracy', 'Energy Efficiency', 'Test Speed', 'Adaptability', 'Hardware Complexity'};
     traditional_scores = [75, 60, 70, 40, 90];  % Out of 100
     adaptive_scores = [95, 85, 85, 95, 75];     % Out of 100
 
     % Note: Higher is better for all except Hardware Complexity (lower is better)
-    % For display, we'll invert Hardware Complexity so higher is definitely better
     traditional_scores(5) = 100 - traditional_scores(5);  % Invert complexity
     adaptive_scores(5) = 100 - adaptive_scores(5);        % Invert complexity
 
@@ -500,56 +499,51 @@
     bar(x + bar_width/2, adaptive_scores, bar_width, 'FaceColor', [0.2 0.6 0.8], ...
         'DisplayName', 'Adaptive Multi-Modal System');
     hold off;
-    grid on, alpha(0.3);
+    grid on;
     ylabel('Score (0-100, Higher is Better)');
     title('System Performance Comparison');
-    set(gca, 'XTick', x, 'XTickLabel', metrics);
+    set(gca, 'XTick', x, 'XTickLabel', metrics, 'XTickLabelRotation', 30);
     legend('Location', 'best');
     ylim([0 100]);
 
     % Plot 2: Radar chart style (using polar plot approximation)
     subplot(1, 2, 2);
-    % Close the loop for radar chart
     metrics_closed = [metrics metrics{1}];
     traditional_closed = [traditional_scores traditional_scores(1)];
     adaptive_closed = [adaptive_scores adaptive_scores(1)];
 
     angles = linspace(0, 2*pi, numel(metrics_closed));
-    % Convert to Cartesian coordinates for plotting
     traditional_x = traditional_closed .* cos(angles);
     traditional_y = traditional_closed .* sin(angles);
     adaptive_x = adaptive_closed .* cos(angles);
     adaptive_y = adaptive_closed .* sin(angles);
 
     hold on;
-    patch(traditional_x, traditional_y, [0.6 0.6 0.6], 'FaceAlpha', 0.3, 'EdgeColor', [0.6 0.6 0.6], 'LineWidth', 1.5);
-    patch(adaptive_x, adaptive_y, [0.2 0.6 0.8], 'FaceAlpha', 0.3, 'EdgeColor', [0.2 0.6 0.8], 'LineWidth', 1.5);
+    p1 = patch(traditional_x, traditional_y, [0.6 0.6 0.6], 'FaceAlpha', 0.3, 'EdgeColor', [0.6 0.6 0.6], 'LineWidth', 1.5);
+    p2 = patch(adaptive_x, adaptive_y, [0.2 0.6 0.8], 'FaceAlpha', 0.3, 'EdgeColor', [0.2 0.6 0.8], 'LineWidth', 1.5);
     hold off;
 
     % Add metric labels
     for i = 1:numel(metrics)
         angle = angles(i);
-        label_x = 1.15 * cos(angle);
-        label_y = 1.15 * sin(angle);
+        label_x = 115 * cos(angle);
+        label_y = 115 * sin(angle);
         text(label_x, label_y, metrics{i}, ...
              'HorizontalAlignment', 'center', 'VerticalAlignment', 'middle', ...
-             'Rotation', angle*180/pi + 90, 'FontSize', 8);
+             'FontSize', 8);
     end
 
-    grid on, alpha(0.3);
+    grid on;
     title('Performance Radar Chart');
     axis equal;
-    xlim([-1.2 1.2]);
-    ylim([-1.2 1.2]);
+    xlim([-140 140]);
+    ylim([-140 140]);
     box on;
 
     % Add legend
-    legend([patch([0 0 0],[0 0 0],[0.6 0.6 0.6],'FaceAlpha',0.3), ...
-            patch([0 0 0],[0 0 0],[0.2 0.6 0.8],'FaceAlpha',0.3)], ...
-           {'Traditional Fixed-Pulse', 'Adaptive Multi-Modal System'}, ...
-           'Location', 'bestoutside');
+    legend([p1, p2], {'Traditional Fixed-Pulse', 'Adaptive Multi-Modal System'}, 'Location', 'southoutside');
 
-    suptitle('System Efficiency: Traditional vs Adaptive Approach', 'FontWeight', 'bold');
+    sgtitle('System Efficiency: Traditional vs Adaptive Approach', 'FontWeight', 'bold');
 
     % Save plot
     png_file8 = fullfile(plots_dir, 'IDP08_System_Efficiency_Metrics.png');
@@ -563,4 +557,3 @@
     for i = 1:8
         fprintf('  - IDP%02d_*.png\n', i);
     end
-end

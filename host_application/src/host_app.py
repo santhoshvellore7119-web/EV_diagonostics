@@ -80,7 +80,49 @@ class HostApp(QtWidgets.QMainWindow):
 
     def websocket_message_received(self, message):
         """Called when a message is received from the WebSocket server."""
-        self.logger.debug(f"WebSocket message received: {message}")
+        try:
+            self.logger.debug(f"WebSocket message received: {message[:100]}...")
+            data = json.loads(message)
+
+            timestamp = float(data.get('timestamp', time.time()))
+            voltage = float(data.get('electrical_voltage', 0.0))
+            tof = float(data.get('ultrasonic_timeOfFlight', 0.0))
+            temp = float(data.get('thermal_temperature', 0.0))
+
+            # Add sample to data buffer
+            self.data_manager.add_sample(timestamp, voltage, tof, temp)
+
+            # Extract ML predictions if available
+            mode_name = data.get('degradation_mode')
+            mode_idx = data.get('degradation_mode_idx')
+            probability = data.get('degradation_probability', 0.0)
+            soh = data.get('stateOfHealth_value', 0.0)
+
+            if mode_name is not None or mode_idx is not None:
+                self.ml_handler.update_ml_results(
+                    mode_index=mode_idx,
+                    mode_name=mode_name,
+                    probability=probability,
+                    soh=soh
+                )
+
+            # Extract Rebalancing State if available
+            reb_state = data.get('rebalancing_state')
+            reb_action = data.get('rebalancing_selectedAction')
+            if reb_state and reb_state.lower() != 'idle':
+                self.state_label.setText(f"{reb_state.upper()} ({reb_action})")
+            elif self.sensing_active:
+                self.state_label.setText("Sensing Active")
+
+            # Periodically update plots and UI
+            current_time = time.time()
+            if current_time - self.last_ui_update > self.ui_update_interval:
+                time_data, electrical_data, ultrasonic_data, thermal_data = self.data_manager.get_buffers()
+                self.plot_manager.update_plots(time_data, electrical_data, ultrasonic_data, thermal_data)
+                self.update_status_display()
+                self.last_ui_update = current_time
+        except Exception as e:
+            self.logger.error(f"Error parsing WebSocket frame: {e}")
 
     def websocket_error(self, error):
         """Called when a WebSocket error occurs."""

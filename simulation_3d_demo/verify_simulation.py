@@ -76,16 +76,19 @@ def main():
     print("Verifying 3D EV Battery Simulation")
     print("=" * 40)
     
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    
     # Files to check
     files_to_check = [
         'ev_battery_3d_simulation.py',
-        'test_simulation.py'
+        'test_simulation.py',
+        'test_basic_functionality.py'
     ]
     
     all_passed = True
     
     for filename in files_to_check:
-        filepath = os.path.join('simulation_3d_demo', filename)
+        filepath = os.path.join(script_dir, filename)
         print(f"\nChecking {filename}:")
         
         file_exists = check_file_exists(filepath)
@@ -97,15 +100,15 @@ def main():
         if not syntax_ok:
             all_passed = False
             
-        class_ok = check_class_and_methods(filepath)
-        if not class_ok:
-            all_passed = False
+        if filename == 'ev_battery_3d_simulation.py':
+            class_ok = check_class_and_methods(filepath)
+            if not class_ok:
+                all_passed = False
     
     print("\n" + "=" * 40)
     if all_passed:
         print("[OK] All verification checks passed!")
         print("  The 3D simulation file is correctly structured.")
-        print("  Note: Actual execution requires matplotlib and GUI dependencies.")
         return 0
     else:
         print("[ERROR] Some verification checks failed!")

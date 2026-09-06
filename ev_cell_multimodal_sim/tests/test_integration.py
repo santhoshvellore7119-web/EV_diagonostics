@@ -2,20 +2,18 @@ import sys
 import os
 import numpy as np
 import torch
-# Add the parent directory to sys.path so we can import modules
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'core'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'models'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'control'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'config'))
 
-from physics_engine import simulate_cell_response
-from virtual_daq import VirtualDAQ
-from cell_database import CellDatabase
-from fusion_net import MultiBranchFusionNet
-from decision_engine import DecisionEngine, RecoveryAction
-from rebalancing_sim import RebalancingSimulator
-import params as P
+package_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if package_root not in sys.path:
+    sys.path.insert(0, package_root)
+
+from core.physics_engine import simulate_cell_response
+from core.virtual_daq import VirtualDAQ
+from core.cell_database import CellDatabase
+from models.fusion_net import MultiBranchFusionNet
+from control.decision_engine import DecisionEngine, RecoveryAction
+from control.rebalancing_sim import RebalancingSimulator
+import config.params as P
 
 def test_data_to_model():
     """Test that data generated can be fed into the model"""

@@ -180,94 +180,172 @@ def simulate_thermal_response(current_pulse, soc, degradation_mode, dt):
     return temperature, dT_dt
 
 
-def simulate_cell_response(soc, degradation_mode, add_noise=True):
+# Canonical Degradation Parameter Regimes
+DEGRADATION_PHYSICS_PARAMS = {
+    'healthy': {
+        'r0': 0.045, 'r1': 0.020, 'c1': 2000.0,
+        'sos': 2500.0, 'attenuation': 1.00, 'phase_shift': 0.0,
+        'r_th': 2.0, 'c_th': 500.0, 'gas_reverb': False, 'nominal_soh': 95.0
+    },
+    'li_plating': {
+        'r0': 0.052, 'r1': 0.035, 'c1': 2200.0,
+        'sos': 2560.0, 'attenuation': 0.96, 'phase_shift': np.pi,
+        'r_th': 2.1, 'c_th': 500.0, 'gas_reverb': False, 'nominal_soh': 88.0
+    },
+    'active_material_loss': {
+        'r0': 0.065, 'r1': 0.048, 'c1': 1600.0,
+        'sos': 2400.0, 'attenuation': 0.88, 'phase_shift': 0.0,
+        'r_th': 2.2, 'c_th': 480.0, 'gas_reverb': False, 'nominal_soh': 82.0
+    },
+    'electrolyte_decomposition': {
+        'r0': 0.078, 'r1': 0.060, 'c1': 1400.0,
+        'sos': 2380.0, 'attenuation': 0.84, 'phase_shift': 0.2,
+        'r_th': 2.5, 'c_th': 470.0, 'gas_reverb': False, 'nominal_soh': 80.0
+    },
+    'gas_generation': {
+        'r0': 0.055, 'r1': 0.025, 'c1': 1900.0,
+        'sos': 2100.0, 'attenuation': 0.60, 'phase_shift': 0.5,
+        'r_th': 3.2, 'c_th': 450.0, 'gas_reverb': True, 'nominal_soh': 90.0
+    },
+    'internal_short': {
+        'r0': 0.095, 'r1': 0.080, 'c1': 1200.0,
+        'sos': 2420.0, 'attenuation': 0.75, 'phase_shift': 0.0,
+        'r_th': 1.8, 'c_th': 500.0, 'gas_reverb': False, 'nominal_soh': 45.0
+    }
+}
+
+
+def simulate_cell_from_parameters(
+    soc: float,
+    r0: float = P.R0,
+    r1: float = P.R1,
+    c1: float = P.C1,
+    sos: float = P.SOS,
+    attenuation: float = 1.0,
+    r_th: float = P.THERMAL_RESISTANCE_K_PER_W,
+    c_th: float = P.THERMAL_CAPACITY_J_PER_K,
+    pulse_amp: float = P.EXCITATION_PULSE_AMPLITUDE_A,
+    pulse_width_s: float = P.EXCITATION_PULSE_WIDTH_S,
+    period_s: float = P.EXCITATION_PERIOD_S,
+    sampling_rate_hz: float = P.DAQ_SAMPLING_RATE_HZ,
+    add_noise: bool = True,
+    phase_shift: float = 0.0,
+    gas_reverb: bool = False,
+    temp_ambient: float = 25.0
+) -> dict:
     """
-    Simulate the full multi-physics response of the cell to a single excitation pulse.
-    Returns dictionaries containing the simulated signals for electrical, ultrasonic, and thermal.
+    Pure physical simulator: Computes electrical (2RC ECM), ultrasonic (pulse-echo wave),
+    and thermal (transient lumped model) response strictly from physical parameter variables.
+    No degradation mode string or label is ever passed to this function.
     """
-    # Time vector for one excitation cycle
-    t = np.arange(0, P.EXCITATION_PERIOD_S, 1/P.DAQ_SAMPLING_RATE_HZ)
-    # Ensure we have exactly SAMPLES_PER_CYCLE points
-    if len(t) > P.SAMPLES_PER_CYCLE:
-        t = t[:P.SAMPLES_PER_CYCLE]
-    elif len(t) < P.SAMPLES_PER_CYCLE:
-        # Pad with zeros if necessary (should not happen with exact division)
-        t = np.pad(t, (0, P.SAMPLES_PER_CYCLE - len(t)), 'constant')
+    n_samples = max(10, int(sampling_rate_hz * period_s))
+    t = np.linspace(0, period_s, n_samples, endpoint=False)
 
-    # Generate excitation pulse: a square pulse of current
-    excitation_pulse = np.zeros_like(t)
-    pulse_width_samples = int(P.EXCITATION_PULSE_WIDTH_S * P.DAQ_SAMPLING_RATE_HZ)
-    if pulse_width_samples > 0:
-        excitation_pulse[:pulse_width_samples] = P.EXCITATION_PULSE_AMPLITUDE_A
+    # 1. Electrical ECM Response (2RC Euler integration over excitation window)
+    dt_elec = 1e-5  # 10 microseconds per sample -> 2.56 ms sequence window
+    pulse_samples = 80
+    current_pulse = np.zeros(n_samples)
+    current_pulse[:min(n_samples, pulse_samples)] = pulse_amp
 
-    # Electrical response: terminal voltage
-    electrical_voltage = simulate_ecm_response(excitation_pulse, soc, t[1]-t[0])  # assume uniform dt
-    # We'll also return the current for completeness (though it's known)
-    electrical_current = excitation_pulse
+    ocv = P.OCV_INTERCEPT + P.OCV_SLOPE * np.clip(soc, 0.0, 1.0)
+    voltage = np.zeros(n_samples)
+    v_rc1 = 0.0
+    for i in range(n_samples):
+        i_t = current_pulse[i]
+        if i > 0:
+            dv_rc1 = (i_t - v_rc1 / max(1e-4, r1)) / max(0.01, c1 * 1e-3) * dt_elec
+            v_rc1 += dv_rc1
+        voltage[i] = ocv - i_t * r0 - v_rc1
 
-    # Ultrasonic response: triggered at the start of the excitation pulse
-    tof, amplitude, phase_shift = simulate_ultrasonic_response(
-        excitation_pulse, soc, degradation_mode
-    )
-    # We'll simulate the entire ultrasonic waveform as a simple pulse echo for the purpose of having a signal.
-    # Generate a base ultrasonic pulse (modulated Gaussian)
-    # We'll create a signal that is zero except around the expected ToF.
-    ultrasonic_signal = np.zeros_like(t)
-    # The pulse is transmitted at t=0 and received at t=tof.
-    # We'll create a pulse centered at the expected ToF with a width related to the bandwidth.
-    pulse_width_samples = int(1 / P.ULTRASONIC_BANDWIDTH_HZ * P.DAQ_SAMPLING_RATE_HZ)
-    pulse_width_samples = max(1, pulse_width_samples)
-    tof_index = int(tof * P.DAQ_SAMPLING_RATE_HZ)
-    if 0 <= tof_index < len(ultrasonic_signal):
-        # Create a simple pulse: a Gaussian window
-        sigma = pulse_width_samples / 4.0  # spread
-        for i in range(len(ultrasonic_signal)):
-            ultrasonic_signal[i] = np.exp(-0.5 * ((i - tof_index) / sigma)**2) * amplitude
-    else:
-        # If ToF is out of range, leave as zeros
-        pass
+    # 2. Ultrasonic Pulse-Echo Waveform (10 MHz DAQ sampling resolution: 0.1 us per sample)
+    dt_ultra = 1e-7
+    tof = 2.0 * P.ULTRASONIC_PATH_LENGTH_M / max(100.0, sos)
+    tof_idx = int(tof / dt_ultra)
 
-    # Thermal response: we need to simulate the thermal transient over the excitation period
-    # Note: the thermal response is slower, so we might see only the beginning of the transient.
-    temperature_rise, dT_dt = simulate_thermal_response(
-        excitation_pulse, soc, degradation_mode, t[1]-t[0]
-    )
+    ultrasonic_signal = np.zeros(n_samples)
+    tx_sigma = 4.0
+    for i in range(min(n_samples, int(tx_sigma * 6))):
+        ultrasonic_signal[i] += np.exp(-0.5 * (i / tx_sigma) ** 2) * 1.0
 
-    # Add noise if requested
+    rx_sigma = tx_sigma * 1.2
+    phase_sign = -1.0 if np.abs(phase_shift - np.pi) < 0.5 else 1.0
+    if 0 <= tof_idx < n_samples:
+        i_min = max(0, int(tof_idx - 4 * rx_sigma))
+        i_max = min(n_samples, int(tof_idx + 4 * rx_sigma))
+        for i in range(i_min, i_max):
+            ultrasonic_signal[i] += phase_sign * attenuation * np.exp(-0.5 * ((i - tof_idx) / rx_sigma) ** 2)
+
+    if gas_reverb:
+        for mult, att_mult in [(1.45, 0.40), (1.90, 0.25)]:
+            rev_idx = int((tof * mult) / dt_ultra)
+            if 0 <= rev_idx < n_samples:
+                i_min = max(0, int(rev_idx - 4 * rx_sigma))
+                i_max = min(n_samples, int(rev_idx + 4 * rx_sigma))
+                for i in range(i_min, i_max):
+                    ultrasonic_signal[i] += att_mult * attenuation * np.exp(-0.5 * ((i - rev_idx) / rx_sigma) ** 2)
+
+    # 3. Thermal Transient Response (Lumped Parameter Thermal Model)
+    base_temp_rise = (r0 + r1) * (pulse_amp ** 2) * r_th * 30.0 + max(0.0, temp_ambient - 25.0)
+    temperature_rise = np.zeros(n_samples)
+    temp_rise = 0.0
+    dt_therm = 1e-4
+    for i in range(n_samples):
+        i_t = current_pulse[i]
+        heat_gen = (i_t ** 2) * (r0 + r1) * 50.0 * dt_therm
+        heat_loss = (temp_rise / max(0.1, r_th)) * dt_therm
+        temp_rise += (heat_gen - heat_loss) / max(0.1, c_th * 1e-2)
+        temperature_rise[i] = base_temp_rise + temp_rise
+    dT_dt = np.gradient(temperature_rise, dt_therm) if n_samples > 1 else np.zeros(n_samples)
+
+    # 4. Add Sensor Noise if specified
     if add_noise:
-        # Electrical noise: add to voltage
-        electrical_voltage += np.random.normal(0, P.ELECTRICAL_NOISE_STD_V, size=electrical_voltage.shape)
-        # Ultrasonic noise: add jitter to ToF and noise to amplitude
-        tof += np.random.normal(0, P.ULTRASONIC_TOF_NOISE_STD_S)
-        amplitude += np.random.normal(0, 0.01)  # small noise on amplitude
-        # Thermal noise: add to temperature rise
-        temperature_rise += np.random.normal(0, P.THERMAL_NOISE_STD_K, size=temperature_rise.shape)
-        dT_dt += np.random.normal(0, P.THERMAL_NOISE_STD_K / (t[1]-t[0]), size=dT_dt.shape)  # approximate
-
-    # Prepare outputs
-    electrical_signal = {
-        'voltage': electrical_voltage,
-        'current': electrical_current,
-        'time': t
-    }
-    ultrasonic_signal = {
-        'tof': tof,
-        'amplitude': amplitude,
-        'phase_shift': phase_shift,
-        'signal': ultrasonic_signal,  # the full waveform
-        'time': t
-    }
-    thermal_signal = {
-        'temperature_rise': temperature_rise,
-        'dT_dt': dT_dt,
-        'time': t
-    }
+        voltage += np.random.normal(0, 0.003, size=voltage.shape)
+        tof += float(np.random.normal(0, 0.05e-6))
+        attenuation += float(np.random.normal(0, 0.015))
+        ultrasonic_signal += np.random.normal(0, 0.015, size=ultrasonic_signal.shape)
+        temperature_rise += np.random.normal(0, 0.05, size=temperature_rise.shape)
+        dT_dt += np.random.normal(0, 0.05 / max(1e-6, dt_therm), size=dT_dt.shape)
 
     return {
-        'electrical': electrical_signal,
-        'ultrasonic': ultrasonic_signal,
-        'thermal': thermal_signal
+        'electrical': {
+            'voltage': voltage,
+            'current': current_pulse,
+            'time': t
+        },
+        'ultrasonic': {
+            'tof': tof,
+            'amplitude': attenuation,
+            'phase_shift': phase_shift,
+            'signal': ultrasonic_signal,
+            'time': t
+        },
+        'thermal': {
+            'temperature_rise': temperature_rise,
+            'dT_dt': dT_dt,
+            'time': t
+        }
     }
+
+
+def simulate_cell_response(soc, degradation_mode='healthy', add_noise=True):
+    """
+    Simulate full multi-physics response by looking up canonical physical parameter regime
+    and executing the pure parameter physics simulator.
+    """
+    params = DEGRADATION_PHYSICS_PARAMS.get(degradation_mode, DEGRADATION_PHYSICS_PARAMS['healthy'])
+    return simulate_cell_from_parameters(
+        soc=soc,
+        r0=params['r0'],
+        r1=params['r1'],
+        c1=params['c1'],
+        sos=params['sos'],
+        attenuation=params['attenuation'],
+        r_th=params['r_th'],
+        c_th=params['c_th'],
+        phase_shift=params.get('phase_shift', 0.0),
+        gas_reverb=params.get('gas_reverb', False),
+        add_noise=add_noise
+    )
 
 
 def to_csv(soc, degradation_mode, add_noise=True, filename=None):

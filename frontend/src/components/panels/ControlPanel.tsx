@@ -7,8 +7,7 @@ import {
 import {
   setCurrentTimeIndex,
   setPlaybackSpeed,
-  setIsPlaying,
-  setFrameBufferLength
+  setIsPlaying
 } from '../../store/timelineSlice';
 
 const ControlPanel: React.FC = () => {
@@ -20,6 +19,9 @@ const ControlPanel: React.FC = () => {
 
   const handleModeChange = (newMode: 'live' | 'simulink' | '3d' | 'gazebo') => {
     dispatch(setMode(newMode));
+    fetch(`http://localhost:8000/api/mode/set?mode=${newMode}`, { method: 'POST' }).catch(() => {
+      // Keep running smoothly even if backend is starting up
+    });
   };
 
   const handlePlayPause = () => {

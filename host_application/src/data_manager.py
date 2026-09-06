@@ -4,10 +4,19 @@ Handles data buffering, storage, and replay functionality.
 """
 
 import json
-import os
+import os, sys
 import numpy as np
 from datetime import datetime
 from .logger import get_logger
+
+# Import canonical DiagnosticFrame
+try:
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+    if project_root not in sys.path:
+        sys.path.insert(0, project_root)
+    from common.diagnostic_schema import DiagnosticFrame
+except ImportError:
+    DiagnosticFrame = None
 
 
 class DataManager:

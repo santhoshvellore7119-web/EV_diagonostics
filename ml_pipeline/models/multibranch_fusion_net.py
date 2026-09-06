@@ -235,12 +235,15 @@ class MultiBranchFusionNet(nn.Module):
 
         result = {
             'degradation_logits': degradation_logits,
+            'soh': soh_mean,
             'soh_mean': soh_mean,
             'soh_logvar': soh_logvar
         }
 
         if attention_info is not None:
             result['attention_info'] = attention_info
+            if 'modality_weights' in attention_info:
+                result['modality_weights'] = attention_info['modality_weights']
 
         return result
 

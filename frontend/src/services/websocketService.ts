@@ -1,4 +1,4 @@
-import { AppDispatch, RootState } from '../store';
+import { AppDispatch } from '../store';
 import { DiagnosticFrame } from '../store/diagnosticFrameSlice';
 
 /**
@@ -129,5 +129,5 @@ class WebSocketService {
 }
 
 // Create a singleton instance
-const websocketService = new WebSocketService();
+export const websocketService = new WebSocketService();
 export default websocketService;

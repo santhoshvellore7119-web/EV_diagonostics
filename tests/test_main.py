@@ -1,19 +1,13 @@
+#!/usr/bin/env python
+"""
+Static verification of firmware source tree and headers.
+"""
+
 import sys
 import os
-import os.path
+import pytest
 
 base = os.path.join(os.path.dirname(__file__), '..', 'firmware', 'src')
-
-def check_file_exists(path):
-    full_path = os.path.join(base, path)
-    if os.path.isfile(full_path):
-        size = os.path.getsize(full_path)
-        if size > 0:
-            return True, f"OK ({size} bytes)"
-        else:
-            return False, "File is empty"
-    else:
-        return False, "File does not exist"
 
 files_to_check = [
     "sensors/electrical.h",
@@ -35,18 +29,26 @@ files_to_check = [
     "main.cpp",
 ]
 
-print("Checking existence and size of firmware source files:")
-all_ok = True
-for f in files_to_check:
-    ok, msg = check_file_exists(f)
-    if ok:
-        print(f"  {f}: {msg}")
-    else:
-        print(f"  {f}: FAIL - {msg}")
-        all_ok = False
 
-if all_ok:
-    print("\nAll firmware source files exist and are non-empty.")
-else:
-    print("\nSome firmware source files are missing or empty.")
-    sys.exit(1)
+@pytest.mark.parametrize("rel_path", files_to_check)
+def test_firmware_file_exists_and_non_empty(rel_path):
+    """Ensure each canonical firmware source file exists and has size > 0."""
+    full_path = os.path.join(base, rel_path)
+    assert os.path.isfile(full_path), f"Firmware file missing: {rel_path}"
+    assert os.path.getsize(full_path) > 0, f"Firmware file empty: {rel_path}"
+
+
+if __name__ == '__main__':
+    print("Checking existence and size of firmware source files:")
+    all_ok = True
+    for f in files_to_check:
+        try:
+            test_firmware_file_exists_and_non_empty(f)
+            print(f"  [OK] {f}")
+        except AssertionError as e:
+            print(f"  [FAIL] {e}")
+            all_ok = False
+    if all_ok:
+        print("\nAll firmware source files exist and are non-empty.")
+    else:
+        sys.exit(1)

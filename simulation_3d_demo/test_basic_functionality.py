@@ -9,15 +9,17 @@ import sys
 import os
 
 # Add current directory to path
-sys.path.insert(0, os.path.dirname(__file__))
+script_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, script_dir)
+sim_file = os.path.join(script_dir, 'ev_battery_3d_simulation.py')
 
 def test_file_structure():
     """Test that the simulation file has the expected structure"""
     try:
         # Check that the file exists
-        filename = 'ev_battery_3d_simulation.py'
+        filename = sim_file
         if not os.path.isfile(filename):
-            print("FAIL: ev_battery_3d_simulation.py not found")
+            print(f"FAIL: {filename} not found")
             return False
 
         # Read the file and check for key components
@@ -56,7 +58,7 @@ def test_file_structure():
 def test_syntax_without_import():
     """Test Python syntax without actually importing modules that might missing"""
     try:
-        filename = 'ev_battery_3d_simulation.py'
+        filename = sim_file
         with open(filename, 'r', encoding='utf-8') as f:
             content = f.read()
 
@@ -76,7 +78,7 @@ def test_syntax_without_import():
 def test_parameter_logic():
     """Test the parameter logic by examining the source code"""
     try:
-        filename = 'ev_battery_3d_simulation.py'
+        filename = sim_file
         with open(filename, 'r', encoding='utf-8') as f:
             content = f.read()
 
@@ -111,7 +113,7 @@ def test_parameter_logic():
 def test_sensor_method():
     """Test that sensor reading method exists"""
     try:
-        filename = 'ev_battery_3d_simulation.py'
+        filename = sim_file
         with open(filename, 'r', encoding='utf-8') as f:
             content = f.read()
 

@@ -13,10 +13,10 @@ def test_imports():
         import matplotlib.pyplot as plt
         from mpl_toolkits.mplot3d import Axes3D
         import matplotlib.widgets as widgets
-        print("✓ All required imports successful")
+        print("[OK] All required imports successful")
         return True
     except ImportError as e:
-        print(f"✗ Import error: {e}")
+        print(f"[FAIL] Import error: {e}")
         return False
 
 def test_simulation_creation():
@@ -32,10 +32,10 @@ def test_simulation_creation():
         sim = EVBattery3DSimulator.__new__(EVBattery3DSimulator)
         sim.__init__()
         
-        print("✓ Simulation object created successfully")
+        print("[OK] Simulation object created successfully")
         return True
     except Exception as e:
-        print(f"✗ Error creating simulation: {e}")
+        print(f"[FAIL] Error creating simulation: {e}")
         return False
 
 def test_parameter_updates():
@@ -55,10 +55,10 @@ def test_parameter_updates():
         sim.update_degradation_mode('li_plating')
         assert sim.degradation_mode == 'li_plating', f"Degradation mode not updated: {sim.degradation_mode}"
         
-        print("✓ Parameter updates work correctly")
+        print("[OK] Parameter updates work correctly")
         return True
     except Exception as e:
-        print(f"✗ Error testing parameter updates: {e}")
+        print(f"[FAIL] Error testing parameter updates: {e}")
         return False
 
 def test_sensor_readings():
@@ -89,10 +89,10 @@ def test_sensor_readings():
         assert 'temperature_rise' in readings['thermal']
         assert 'dT_dt' in readings['thermal']
         
-        print("✓ Sensor readings computation works correctly")
+        print("[OK] Sensor readings computation works correctly")
         return True
     except Exception as e:
-        print(f"✗ Error testing sensor readings: {e}")
+        print(f"[FAIL] Error testing sensor readings: {e}")
         return False
 
 def main():
@@ -118,10 +118,10 @@ def main():
     print(f"Results: {passed}/{total} tests passed")
     
     if passed == total:
-        print("✓ All tests passed!")
+        print("[OK] All tests passed!")
         return 0
     else:
-        print("✗ Some tests failed!")
+        print("[FAIL] Some tests failed!")
         return 1
 
 if __name__ == "__main__":
