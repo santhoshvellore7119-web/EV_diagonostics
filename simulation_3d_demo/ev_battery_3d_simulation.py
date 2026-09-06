@@ -254,65 +254,6 @@ class EVBattery3DSimulator:
         self.noise_slider.set_val(0.4)
         self.exc_slider.set_val(0.6)
 
-    def compute_sensor_readings(self):
-        """Compute simulated sensor readings based on canonical ODE physics model"""
-        phys = DEGRADATION_PHYSICS_PARAMS.get(
-            self.degradation_mode, DEGRADATION_PHYSICS_PARAMS['healthy']
-        )
-
-        noise_factor = float(self.noise_level)
-
-        # Sample physical parameter state around nominal regime
-        r0 = float(phys['r0'] * (1.0 + np.random.normal(0, 0.02 * noise_factor)))
-        r1 = float(phys['r1'] * (1.0 + np.random.normal(0, 0.02 * noise_factor)))
-        c1 = float(phys['c1'] * (1.0 + np.random.normal(0, 0.02 * noise_factor)))
-        sos = float(phys['sos'] + np.random.normal(0, 10.0 * noise_factor))
-        attenuation = float(np.clip(phys['attenuation'] + np.random.normal(0, 0.015 * noise_factor), 0.15, 1.15))
-        phase_shift = float(phys.get('phase_shift', 0.0) + np.random.normal(0, 0.02 * noise_factor))
-        r_th = float(phys.get('r_th', 2.0) * (1.0 + np.random.normal(0, 0.02 * noise_factor)))
-        c_th = float(phys.get('c_th', 500.0) * (1.0 + np.random.normal(0, 0.02 * noise_factor)))
-
-        # Electrical ECM calculations
-        i_pulse = float(self.params.get('pulse_amplitude_a', 0.5))
-        ocv = float(3.0 + 1.2 * np.clip(self.soc, 0.0, 1.0))
-        voltage = float(ocv - i_pulse * r0 + np.random.normal(0, 0.002 * noise_factor))
-        current = float(i_pulse + np.random.normal(0, 0.005 * noise_factor))
-        power = float(voltage * current)
-
-        # Ultrasonic calculations (round-trip path length d = 2 * 0.01 m = 0.02 m)
-        tof_s = float(2.0 * 0.01 / max(100.0, sos) + np.random.normal(0, 0.05e-6 * noise_factor))
-        tof_us = float(tof_s * 1e6)
-
-        # Thermal calculations
-        ambient_temp = 25.0 + (10.0 if self.degradation_mode == 'internal_short' else 0.0)
-        temp_rise = float((r0 + r1) * (i_pulse ** 2) * r_th * 30.0 + max(0.0, ambient_temp - 25.0) + np.random.normal(0, 0.05 * noise_factor))
-        temperature = float(25.0 + temp_rise)
-        dT_dt = float((i_pulse ** 2) * (r0 + r1) * 50.0 / (c_th * 1e-2) + np.random.normal(0, 0.01 * noise_factor))
-
-        return {
-            'electrical': {
-                'voltage': voltage,
-                'current': current,
-                'power': power,
-                'resistance': r0,
-                'r0': r0,
-                'r1': r1,
-                'c1': c1
-            },
-            'ultrasonic': {
-                'tof': tof_s,
-                'tof_us': tof_us,
-                'amplitude': attenuation,
-                'phase_shift': phase_shift,
-                'speed_of_sound': sos
-            },
-            'thermal': {
-                'temperature_rise': temp_rise,
-                'temperature': temperature,
-                'dT_dt': dT_dt
-            }
-        }
-
     def update_visualization(self):
         """Update the 3D visualization"""
         if self.headless or self.ax_3d is None:

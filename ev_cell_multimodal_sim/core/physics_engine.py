@@ -181,6 +181,7 @@ def simulate_thermal_response(current_pulse, soc, degradation_mode, dt):
 
 
 # Canonical Degradation Parameter Regimes
+# Canonical Degradation Parameter Regimes
 DEGRADATION_PHYSICS_PARAMS = {
     'healthy': {
         'r0': 0.045, 'r1': 0.020, 'c1': 2000.0,
@@ -193,13 +194,13 @@ DEGRADATION_PHYSICS_PARAMS = {
         'r_th': 2.1, 'c_th': 500.0, 'gas_reverb': False, 'nominal_soh': 88.0
     },
     'active_material_loss': {
-        'r0': 0.065, 'r1': 0.048, 'c1': 1600.0,
-        'sos': 2400.0, 'attenuation': 0.88, 'phase_shift': 0.0,
+        'r0': 0.060, 'r1': 0.048, 'c1': 1600.0,
+        'sos': 2400.0, 'attenuation': 0.92, 'phase_shift': 0.0,
         'r_th': 2.2, 'c_th': 480.0, 'gas_reverb': False, 'nominal_soh': 82.0
     },
     'electrolyte_decomposition': {
-        'r0': 0.078, 'r1': 0.060, 'c1': 1400.0,
-        'sos': 2380.0, 'attenuation': 0.84, 'phase_shift': 0.2,
+        'r0': 0.088, 'r1': 0.060, 'c1': 1400.0,
+        'sos': 2380.0, 'attenuation': 0.78, 'phase_shift': 0.2,
         'r_th': 2.5, 'c_th': 470.0, 'gas_reverb': False, 'nominal_soh': 80.0
     },
     'gas_generation': {
@@ -213,11 +214,6 @@ DEGRADATION_PHYSICS_PARAMS = {
         'r_th': 1.8, 'c_th': 500.0, 'gas_reverb': False, 'nominal_soh': 45.0
     }
 }
-
-
-def simulate_cell_from_parameters(
-    soc: float,
-    r0: float = P.R0,
     r1: float = P.R1,
     c1: float = P.C1,
     sos: float = P.SOS,
