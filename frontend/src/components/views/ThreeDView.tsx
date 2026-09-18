@@ -73,7 +73,7 @@ const ThreeDView: React.FC = () => {
   }, [pitch, yaw, zoom]);
 
   // Colormap generator (Thermal, Turbo, Inferno, Viridis)
-  const getColor = (tempC: number, alpha: number = 1.0): string => {
+  const getColor = useCallback((tempC: number, alpha: number = 1.0): string => {
     const tNorm = Math.max(0, Math.min(1, (tempC - 20.0) / 35.0));
     let r = 0, g = 0, b = 0;
 
@@ -110,7 +110,7 @@ const ThreeDView: React.FC = () => {
       }
     }
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-  };
+  }, [colormap]);
 
   // Render Oscilloscope waveform on secondary canvas
   const renderOscilloscope = useCallback(() => {
@@ -253,7 +253,7 @@ const ThreeDView: React.FC = () => {
 
       // Single Cell or 4S Pack Module Rendering
       const cellOffsets = sceneMode === 'single_cell' 
-        ? [{ x: 0, z: 0, id: 'CELL-01', temp: cellTemp, soc: frame?.stateOfCharge_soc || 0.5 }]
+        ? [{ x: 0, z: 0, id: 'CELL-01', temp: cellTemp, soc: frame?.simulation_soc || 0.5 }]
         : [
             { x: -90, z: -20, id: 'CELL-1', temp: cellTemp + 1.2, soc: 0.85 },
             { x: -30, z: 0,   id: 'CELL-2', temp: cellTemp, soc: 0.65 },
@@ -526,7 +526,7 @@ const ThreeDView: React.FC = () => {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [project, pitch, yaw, zoom, autoRotate, renderMode, sceneMode, colormap, showWireframe, frame, isDragging, renderOscilloscope]);
+  }, [project, pitch, yaw, zoom, autoRotate, renderMode, sceneMode, colormap, showWireframe, frame, isDragging, renderOscilloscope, getColor]);
 
   // Mouse drag interaction
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -781,7 +781,7 @@ const ThreeDView: React.FC = () => {
           <div><strong>Surface Temp:</strong> {frame?.thermal_temperature?.toFixed(1) || '25.0'} °C</div>
           <div><strong>Acoustic ToF:</strong> {frame?.ultrasonic_timeOfFlight?.toFixed(2) || '8.00'} µs</div>
           <div><strong>Sound Velocity:</strong> {frame?.ultrasonic_speedOfSound?.toFixed(0) || '2500'} m/s</div>
-          <div><strong>Rebalancer:</strong> <span style={{ color: frame?.rebalancing_safetyStatus === 'critical_lockout_isolated' ? '#ef4444' : '#10b981', fontWeight: 600 }}>{frame?.rebalancing_state || 'IDLE'}</span></div>
+          <div><strong>Rebalancer:</strong> <span style={{ color: (frame?.rebalancing_state?.toLowerCase().includes('lockout') || frame?.rebalancing_state?.toLowerCase().includes('isolated')) ? '#ef4444' : '#10b981', fontWeight: 600 }}>{frame?.rebalancing_state || 'IDLE'}</span></div>
           <div><strong>Efficiency:</strong> <span style={{ color: '#34d399', fontWeight: 600 }}>92.4% (ZVS Stage)</span></div>
         </div>
 
