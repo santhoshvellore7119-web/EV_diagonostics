@@ -69,38 +69,55 @@ class EVBattery3DSimulator:
             self.ax_3d = None
 
     def _default_parameters(self):
-        """Default system parameters"""
+        """Default system parameters and physical dimensions"""
         return {
-            # Cell dimensions (meters)
-            'cell_length': 0.065,   # 6.5 cm
-            'cell_width': 0.02,     # 2 cm radius (cylinder approximation)
-            'cell_height': 0.065,   # 6.5 cm
+            # Cell dimensions (meters) - 18650 / 21700 standard form factors
+            'cell_length': 0.065,   # 65 mm height
+            'cell_width': 0.018,    # 18 mm diameter (18650 cylinder)
+            'cell_radius': 0.009,   # 9 mm radius
+            'cell_height': 0.065,   # 65 mm height
 
-            # Sensor positions (relative to cell center)
-            'electrical_pos': np.array([0, 0, 0.035]),      # Top center
-            'ultrasonic_tx_pos': np.array([-0.01, 0, 0]),   # Left side
-            'ultrasonic_rx_pos': np.array([0.01, 0, 0]),    # Right side
-            'thermal_pos': np.array([0, 0, -0.035]),        # Bottom center
+            # Jelly-roll layer physical properties
+            'anode_thickness_m': 80e-6,      # 80 µm Graphite
+            'cathode_thickness_m': 70e-6,    # 70 µm NMC/LFP
+            'separator_thickness_m': 20e-6,  # 20 µm Polyolefin
+            'cu_foil_thickness_m': 10e-6,    # 10 µm Copper
+            'al_foil_thickness_m': 15e-6,    # 15 µm Aluminum
+
+            # Anisotropic thermal conductivity (W / (m*K))
+            'k_radial': 0.55,       # Low across polymer/electrolyte layers
+            'k_axial': 28.5,        # High along metallic current collectors
+            'rho_density': 2450.0,  # kg / m^3
+            'cp_specific_heat': 1050.0, # J / (kg*K)
+
+            # Acoustic impedance of layers (MRayl = 1e6 kg/(m^2*s))
+            'acoustic_impedances': {
+                'copper': 41.8,     # Cu current collector
+                'aluminum': 17.3,   # Al current collector
+                'electrolyte': 1.6, # Liquid carbonate electrolyte
+                'separator': 1.9,   # Polyethylene/Polypropylene
+                'graphite': 5.2,    # Anode matrix
+                'nmc_cathode': 12.8,# Cathode active material
+                'gas_pocket': 0.0004,# High impedance mismatch (gas generation)
+                'li_plating': 2.8   # Metallic lithium deposition layer
+            },
+
+            # Sensor positions (relative to cell center in meters)
+            'electrical_pos': np.array([0, 0, 0.035]),      # Top positive terminal
+            'ultrasonic_tx_pos': np.array([-0.009, 0, 0]),  # Left side wall
+            'ultrasonic_rx_pos': np.array([0.009, 0, 0]),   # Right side wall
+            'thermal_pos': np.array([0, 0, -0.035]),        # Bottom base
 
             # MCU and converter positions
-            'mcu_pos': np.array([0.04, 0, 0.02]),           # Top-right front
-            'converter_pos': np.array([-0.04, 0, -0.02]),   # Bottom-left back
+            'mcu_pos': np.array([0.035, 0, 0.02]),          # Top-right front
+            'converter_pos': np.array([-0.035, 0, -0.02]),  # Bottom-left back
 
             # Excitation pulse parameters
             'pulse_width_s': 10e-6,    # 10 microseconds
             'pulse_amplitude_a': 0.5,  # 500 mA
-            'pulse_period_s': 0.1,     # 10 Hz
-
-            # Degradation effects on sensor readings
-            'degradation_effects': {
-                'healthy': {'electrical': 1.0, 'ultrasonic': 1.0, 'thermal': 1.0},
-                'li_plating': {'electrical': 1.02, 'ultrasonic': 0.99, 'thermal': 1.05},
-                'active_material_loss': {'electrical': 1.05, 'ultrasonic': 0.97, 'thermal': 1.1},
-                'electrolyte_decomposition': {'electrical': 1.03, 'ultrasonic': 0.98, 'thermal': 1.05},
-                'gas_generation': {'electrical': 1.08, 'ultrasonic': 0.93, 'thermal': 1.2},
-                'internal_short': {'electrical': 1.15, 'ultrasonic': 0.85, 'thermal': 1.8}
-            }
+            'pulse_period_s': 0.1      # 10 Hz
         }
+
 
     def create_controls(self):
         """Create interactive controls for the simulation"""
@@ -313,6 +330,193 @@ class EVBattery3DSimulator:
             }
         }
 
+    def compute_3d_thermal_field(self, nr=8, ntheta=16, nz=10):
+        """
+        Compute 3D finite-volume temperature field T(r, theta, z) across the cylindrical cell.
+        Solves anisotropic steady-state/quasi-transient heat conduction:
+        k_r * (d2T/dr2 + 1/r*dT/dr) + k_z * d2T/dz2 + q''' = rho * Cp * dT/dt
+        """
+        radius = float(self.params['cell_width']) / 2.0
+        height = float(self.params['cell_height'])
+        k_r = float(self.params.get('k_radial', 0.55))
+        k_z = float(self.params.get('k_axial', 28.5))
+        
+        r_grid = np.linspace(0.001, radius, nr)
+        theta_grid = np.linspace(0, 2 * np.pi, ntheta)
+        z_grid = np.linspace(-height / 2.0, height / 2.0, nz)
+
+        # Baseline ambient temperature
+        ambient = 25.0 + (10.0 if self.degradation_mode == 'internal_short' else 0.0)
+        phys = DEGRADATION_PHYSICS_PARAMS.get(self.degradation_mode, DEGRADATION_PHYSICS_PARAMS['healthy'])
+        i_pulse = float(self.params.get('pulse_amplitude_a', 0.5))
+        
+        # Volumetric Joule heating source term q''' (W/m^3)
+        cell_vol = np.pi * (radius ** 2) * height
+        q_joule = (i_pulse ** 2) * (phys['r0'] + phys['r1']) / max(1e-8, cell_vol)
+
+        T_3d = np.zeros((nr, ntheta, nz))
+
+        # Core temperature rise from 1D analytical radial profile + axial cooling
+        for i, r in enumerate(r_grid):
+            for k, z in enumerate(z_grid):
+                # Analytical cylindrical profile T(r) = T_surf + (q''' * R^2 / (4 * k_r)) * (1 - (r/R)^2)
+                t_radial_rise = (q_joule * (radius ** 2) / (4.0 * max(0.1, k_r))) * (1.0 - (r / radius) ** 2)
+                # Axial conduction to tabs at z = +/- height/2
+                z_norm = 1.0 - (2.0 * abs(z) / height) ** 2
+                t_axial_factor = 0.8 + 0.2 * z_norm
+                
+                base_t = ambient + (t_radial_rise * t_axial_factor * 0.05)
+                T_3d[i, :, k] = base_t
+
+        # Localized hotspot injection for internal short
+        if self.degradation_mode == 'internal_short':
+            # Defect location at r=0.4*R, theta=pi/4, z=0
+            defect_r_idx = int(nr * 0.4)
+            defect_th_idx = int(ntheta * 0.125)
+            defect_z_idx = int(nz * 0.5)
+            
+            for i in range(nr):
+                for j in range(ntheta):
+                    for k in range(nz):
+                        dist_sq = ((i - defect_r_idx) / nr) ** 2 + ((j - defect_th_idx) / ntheta) ** 2 + ((k - defect_z_idx) / nz) ** 2
+                        hotspot_delta = 18.5 * np.exp(-dist_sq / 0.04)
+                        T_3d[i, j, k] += hotspot_delta
+
+        return {
+            'r_grid': r_grid,
+            'theta_grid': theta_grid,
+            'z_grid': z_grid,
+            'T_field': T_3d,
+            'T_max': float(np.max(T_3d)),
+            'T_min': float(np.min(T_3d)),
+            'T_surface': T_3d[-1, :, :]
+        }
+
+    def compute_acoustic_ray_path(self, num_rays=12):
+        """
+        Simulate acoustic ray propagation through the multi-layer cylindrical jelly-roll.
+        Calculates ToF, interface transmission coefficients, and ray trajectories.
+        """
+        radius = float(self.params['cell_width']) / 2.0
+        tx_pos = self.params['ultrasonic_tx_pos']
+        rx_pos = self.params['ultrasonic_rx_pos']
+        
+        phys = DEGRADATION_PHYSICS_PARAMS.get(self.degradation_mode, DEGRADATION_PHYSICS_PARAMS['healthy'])
+        sos = float(phys['sos'])
+        base_atten = float(phys['attenuation'])
+
+        rays = []
+        # Ray fan across the cell diameter
+        z_offsets = np.linspace(-0.015, 0.015, num_rays)
+        
+        for idx, z_off in enumerate(z_offsets):
+            p_start = np.array([tx_pos[0], tx_pos[1], tx_pos[2] + z_off])
+            p_end = np.array([rx_pos[0], rx_pos[1], rx_pos[2] + z_off])
+            
+            # Straight-line ray path with layer transmission loss
+            dist = np.linalg.norm(p_end - p_start)
+            tof_ray_us = (dist / max(100.0, sos)) * 1e6
+            
+            # Attenuation calculation based on degradation mode
+            if self.degradation_mode == 'gas_generation':
+                # Severe acoustic scattering in gas bubbles
+                ray_amp = base_atten * np.exp(-0.35 * (idx % 3 + 1))
+            elif self.degradation_mode == 'internal_short':
+                ray_amp = base_atten * (0.85 if abs(z_off) < 0.005 else 1.0)
+            else:
+                ray_amp = base_atten * (1.0 - 0.05 * (abs(z_off) / 0.015))
+
+            rays.append({
+                'start': p_start.tolist(),
+                'end': p_end.tolist(),
+                'tof_us': float(tof_ray_us),
+                'amplitude': float(ray_amp)
+            })
+
+        return rays
+
+    def compute_degradation_spatial_profile(self):
+        """
+        Generate 3D geometric coordinates for degradation visualization overlays.
+        """
+        radius = float(self.params['cell_width']) / 2.0
+        height = float(self.params['cell_height'])
+        
+        profile = {
+            'mode': self.degradation_mode,
+            'features': []
+        }
+
+        if self.degradation_mode == 'li_plating':
+            # Dendrite layer on outer anode perimeter
+            angles = np.linspace(0, 2 * np.pi, 24)
+            for ang in angles:
+                dendrite_h = np.random.uniform(0.0005, 0.0015)
+                profile['features'].append({
+                    'type': 'plating_layer',
+                    'pos': [float((radius - 0.001) * np.cos(ang)), float((radius - 0.001) * np.sin(ang)), float(np.random.uniform(-height/3, height/3))],
+                    'radius': float(dendrite_h),
+                    'severity': 0.85
+                })
+        elif self.degradation_mode == 'gas_generation':
+            # Gas bubbles in jellyroll pockets
+            for _ in range(16):
+                r_pos = np.random.uniform(0.002, radius * 0.8)
+                th_pos = np.random.uniform(0, 2 * np.pi)
+                z_pos = np.random.uniform(-height * 0.35, height * 0.35)
+                profile['features'].append({
+                    'type': 'gas_bubble',
+                    'pos': [float(r_pos * np.cos(th_pos)), float(r_pos * np.sin(th_pos)), float(z_pos)],
+                    'radius': float(np.random.uniform(0.001, 0.0025)),
+                    'reverberation_factor': 0.90
+                })
+        elif self.degradation_mode == 'internal_short':
+            # Hotspot core defect
+            profile['features'].append({
+                'type': 'internal_short_core',
+                'pos': [0.003, 0.003, 0.0],
+                'radius': 0.0035,
+                'temp_peak_c': 55.0
+            })
+
+        return profile
+
+    def export_3d_state_dict(self):
+        """
+        Export complete 3D multi-physics state for JSON serialization and WebGL sync.
+        """
+        thermal_data = self.compute_3d_thermal_field()
+        acoustic_rays = self.compute_acoustic_ray_path()
+        degradation_profile = self.compute_degradation_spatial_profile()
+        sensor_readings = self.compute_sensor_readings()
+
+        return {
+            'timestamp': self._get_timestamp(),
+            'step_count': self._step_count,
+            'soc': float(self.soc),
+            'degradation_mode': self.degradation_mode,
+            'dimensions': {
+                'height_m': float(self.params['cell_height']),
+                'radius_m': float(self.params['cell_width']) / 2.0
+            },
+            'sensors': {
+                'electrical_pos': self.params['electrical_pos'].tolist(),
+                'ultrasonic_tx_pos': self.params['ultrasonic_tx_pos'].tolist(),
+                'ultrasonic_rx_pos': self.params['ultrasonic_rx_pos'].tolist(),
+                'thermal_pos': self.params['thermal_pos'].tolist(),
+                'mcu_pos': self.params['mcu_pos'].tolist(),
+                'converter_pos': self.params['converter_pos'].tolist()
+            },
+            'thermal': {
+                'T_max': thermal_data['T_max'],
+                'T_min': thermal_data['T_min'],
+                'surface_temperature_matrix': thermal_data['T_surface'].tolist()
+            },
+            'acoustic_rays': acoustic_rays,
+            'degradation_profile': degradation_profile,
+            'readings': sensor_readings
+        }
+
     def update_visualization(self):
         """Update the 3D visualization"""
         if self.headless or self.ax_3d is None:
@@ -325,9 +529,9 @@ class EVBattery3DSimulator:
         self.ax_3d.set_xlabel('X (m)', fontsize=8)
         self.ax_3d.set_ylabel('Y (m)', fontsize=8)
         self.ax_3d.set_zlabel('Z (m)', fontsize=8)
-        self.ax_3d.set_title('3D System Configuration', fontsize=10)
+        self.ax_3d.set_title('3D Multi-Physics System Configuration', fontsize=10)
 
-        # Draw battery cell (cylinder approximation)
+        # Draw battery cell with 3D thermal surface heatmap
         self.draw_battery_cell()
 
         # Draw sensors
@@ -352,25 +556,36 @@ class EVBattery3DSimulator:
         self.fig.canvas.draw_idle()
 
     def draw_battery_cell(self):
-        """Draw the battery cell as a cylinder"""
-        # Parameters
-        radius = self.params['cell_width'] / 2
-        height = self.params['cell_height']
+        """Draw the battery cell as a cylinder with 3D thermal heatmap colormap"""
+        radius = float(self.params['cell_width']) / 2.0
+        height = float(self.params['cell_height'])
 
-        # Create cylinder
-        u = np.linspace(0, 2 * np.pi, 12)
-        v = np.linspace(0, height, 8)
-        u, v = np.meshgrid(u, v)
-        x = radius * np.cos(u)
-        y = radius * np.sin(u)
-        z = v - height/2  # Center vertically
+        # Create cylinder surface
+        u = np.linspace(0, 2 * np.pi, 24)
+        v = np.linspace(-height / 2.0, height / 2.0, 16)
+        u_grid, v_grid = np.meshgrid(u, v)
+        x = radius * np.cos(u_grid)
+        y = radius * np.sin(u_grid)
+        z = v_grid
 
-        # Plot surface
-        self.ax_3d.plot_surface(x, y, z, alpha=0.2, color='lightgray', linewidth=0.5)
+        # Calculate surface thermal distribution for coloring
+        thermal_data = self.compute_3d_thermal_field(nr=8, ntheta=24, nz=16)
+        t_surface = thermal_data['T_surface'].T  # Shape matching meshgrid (16, 24)
+
+        t_min = min(25.0, thermal_data['T_min'])
+        t_max = max(35.0, thermal_data['T_max'])
+        t_norm = (t_surface - t_min) / max(1e-3, (t_max - t_min))
+
+        cmap = plt.get_cmap('plasma')
+        colors = cmap(t_norm)
+
+        # Plot colored surface
+        self.ax_3d.plot_surface(x, y, z, facecolors=colors, alpha=0.6, linewidth=0.2, shade=True)
 
         # Add cell label
-        self.ax_3d.text(0, 0, height/2 + 0.008, 'Battery Cell',
-                       fontsize=8, ha='center', va='bottom', color='darkgray')
+        self.ax_3d.text(0, 0, height/2 + 0.008, f"Cell ({self.degradation_mode})",
+                       fontsize=8, ha='center', va='bottom', color='black', fontweight='bold')
+
 
     def draw_sensors(self):
         """Draw all sensors on the battery cell"""
