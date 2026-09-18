@@ -136,6 +136,8 @@ def run_verification():
         ("Hardware HIL Standalone Engine", [sys.executable, "hardware/run_hardware_hil.py", "--duration", "1.0", "--rate", "10.0"]),
         ("Gazebo Multi-Physics Bridge", [sys.executable, "gazebo/run_gazebo_sim.py", "--mode", "bridge", "--duration", "1.0", "--rate", "10.0"]),
         ("MATLAB/Simulink Digital Twin", [sys.executable, "matlab_simulink_demo/run_matlab_demo.py", "--mode", "auto", "--duration", "2.0"]),
+        ("System Efficiency & Loss Benchmark", [sys.executable, "backend/efficiency_benchmark.py"]),
+        ("Comprehensive MATLAB & Multi-Cell Tests", [sys.executable, "-m", "pytest", "tests/test_matlab_simulink_comprehensive.py", "-v"]),
         ("Firmware Static Verification", [sys.executable, "firmware/run_firmware_sim.py"]),
         ("ML Pipeline Smoke Test", [sys.executable, "ml_pipeline/run_ml_pipeline.py", "--mode", "fast"]),
         ("3D Physics Telemetry Engine", [sys.executable, "simulation_3d_demo/run_3d_sim.py", "--duration", "1.0"]),
@@ -166,7 +168,7 @@ def run_verification():
     print("=" * 75)
 
     if all_passed:
-        print("[SUCCESS] All 18 verification suites passed with zero errors!")
+        print(f"[SUCCESS] All {len(results)} verification suites passed with zero errors!")
         return 0
     else:
         print("[FAILURE] One or more verification suites failed.")

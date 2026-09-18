@@ -1,0 +1,75 @@
+* EV Battery Active Rebalancer - Zero-Voltage Switching (ZVS) Quasi-Resonant Buck-Boost Stage
+* Synchronous Rectification & Soft-Switching Transient Analysis
+
+.title ZVS Synchronous Bidirectional Battery Cell Active Balancer
+
+* ==============================================================================
+* POWER SOURCES & BATTERY CELLS
+* ==============================================================================
+* Source Cell (High SOC: 3.90V)
+V_CELL_HIGH 10 0 DC 3.90
+R_INTERNAL_HIGH 10 11 0.045
+
+* Target Cell (Low SOC: 3.40V)
+V_CELL_LOW 20 0 DC 3.40
+R_INTERNAL_LOW 20 21 0.045
+
+* Logic Supply Rails
+V_3V3 1 0 DC 3.3
+V_12V 2 0 DC 12.0
+
+* ==============================================================================
+* GATE TIMING & PWM GENERATOR (100 kHz, Adaptive Dead-Time: 25ns)
+* ==============================================================================
+* High-Side Gate Pulse (Q_HIGH)
+V_PWM_HIGH 31 0 PULSE(0 10 0 10n 10n 4.5u 10u)
+* Low-Side Gate Pulse (Q_LOW) with 25ns Dead-Time
+V_PWM_LOW 32 0 PULSE(0 10 4.525u 10n 10n 5.4u 10u)
+
+* Gate Resistors
+R_G_HIGH 31 41 4.7
+R_G_LOW  32 42 4.7
+
+* ==============================================================================
+* POWER MOSFET SWITCHES (FDMS86180: Rdson=3.2mOhm, Coss=1200pF)
+* ==============================================================================
+* High-Side Synchronous Switch
+M_HIGH 11 41 50 50 MOSFET_N_ZVS
+* Low-Side Synchronous Switch
+M_LOW  50 42 0  0  MOSFET_N_ZVS
+
+* Resonant Snubber Capacitors (Quasi-Resonant ZVS Tank)
+C_SNUB_HIGH 11 50 470p
+C_SNUB_LOW  50 0  470p
+
+* ==============================================================================
+* ENERGY STORAGE COUPLED INDUCTOR (Coilcraft SER2918H-103KL: 10uH, DCR=3.1mOhm)
+* ==============================================================================
+L_BUCK_BOOST 50 60 10u
+R_L_DCR 60 21 3.1m
+
+* Current Sensing Shunt (Bourns CSS2H-2512: 5mOhm 1%)
+R_SHUNT 21 22 5.0m
+C_OUT_FILTER 22 0 100u IC=3.40
+
+* ==============================================================================
+* MOSFET MODEL MACRO
+* ==============================================================================
+.MODEL MOSFET_N_ZVS NMOS (
++ LEVEL=1
++ VTO=2.2
++ KP=85.0
++ RS=1.6m
++ RD=1.6m
++ CGSO=280p
++ CGDO=120p
++ CBD=1200p
+)
+
+* ==============================================================================
+* SIMULATION COMMANDS & WAVEFORM EXTRACTION
+* ==============================================================================
+.TRAN 10n 50u 0 10n UIC
+.PROBE V(50) V(31) V(32) I(L_BUCK_BOOST) V(22)
+
+.END
