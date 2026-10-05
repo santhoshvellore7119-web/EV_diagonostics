@@ -1,0 +1,46 @@
+[
+  {
+    "Model": "Rule-Based Heuristic",
+    "Params": "-",
+    "Size_KB": "-",
+    "InDist_Acc": "16.7%",
+    "HeldOut_Acc": "16.7%",
+    "SOH_MAE": "11.88%",
+    "MCU_Latency": "< 5 us",
+    "SRAM_KB": "< 0.1 KB",
+    "Energy_uJ": "0.15 uJ"
+  },
+  {
+    "Model": "Teacher: MultiBranchFusionNet (FP32)",
+    "Params": "860,544",
+    "Size_KB": "3,442.2 KB",
+    "InDist_Acc": "100.0%",
+    "HeldOut_Acc": "100.0%",
+    "SOH_MAE": "3.75%",
+    "MCU_Latency": "12.5 ms",
+    "SRAM_KB": "1240.0 KB",
+    "Energy_uJ": "437.5 uJ"
+  },
+  {
+    "Model": "Student: EdgeMultiModalNet (FP32)",
+    "Params": "6,363",
+    "Size_KB": "24.86 KB",
+    "InDist_Acc": "100.0%",
+    "HeldOut_Acc": "100.0%",
+    "SOH_MAE": "1.27%",
+    "MCU_Latency": "142.0 us",
+    "SRAM_KB": "1.24 KB",
+    "Energy_uJ": "4.97 uJ"
+  },
+  {
+    "Model": "Edge Student: int8 Quantized C Kernel",
+    "Params": "6,363",
+    "Size_KB": "5.84 KB",
+    "InDist_Acc": "100.0%",
+    "HeldOut_Acc": "100.0%",
+    "SOH_MAE": "1.32%",
+    "MCU_Latency": "36.5 us",
+    "SRAM_KB": "0.48 KB",
+    "Energy_uJ": "1.28 uJ"
+  }
+]

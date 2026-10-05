@@ -131,7 +131,10 @@ class MultiModalBatteryDataset(Dataset):
             'soh': torch.tensor(soh, dtype=torch.float32),
             'soc': torch.tensor(soc, dtype=torch.float32),
             'r0': torch.tensor(r0, dtype=torch.float32),
-            'sos': torch.tensor(sos, dtype=torch.float32)
+            'sos': torch.tensor(sos, dtype=torch.float32),
+            'attenuation': torch.tensor(attenuation, dtype=torch.float32),
+            'phase_shift': torch.tensor(phase_shift, dtype=torch.float32),
+            'temp_ambient': torch.tensor(temp_ambient, dtype=torch.float32)
         }
 
         if self.transform:
