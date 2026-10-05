@@ -74,3 +74,88 @@ def test_active_rebalancer_efficiency_and_pulse_profile():
     efficiency = (p_out / p_in) * 100.0
 
     assert efficiency >= 90.0, f"Active balancer efficiency ({efficiency:.2f}%) below 90% target"
+
+
+def test_kicad_netlist_and_components_completeness():
+    """
+    Verify KiCad netlist file exists and contains all required schematic components
+    and net definitions matching the $38.75 BOM.
+    """
+    netlist_path = os.path.join(project_root, 'hardware', 'schematics', 'kicad_circuit_netlist.net')
+    assert os.path.exists(netlist_path), "KiCad netlist file missing"
+
+    with open(netlist_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+
+    required_components = [
+        'ESP32-S3-WROOM-1', 'TDC7200PWR', 'TLV3501', 'AD8065',
+        'INA226AIDGSR', 'FDMS86180', 'TPS28225DRBR', 'SER2918H-103KL', 'G3VM-61A1'
+    ]
+    for comp in required_components:
+        assert comp in content, f"Component {comp} missing from KiCad netlist"
+
+    assert "(nets" in content, "Netlist must define nets section"
+    assert "PZT_TX_OUT" in content, "Ultrasonic TX net missing"
+    assert "PZT_RX_IN" in content, "Ultrasonic RX net missing"
+    assert "ZVS_SWITCH_NODE" in content, "ZVS switch node net missing"
+
+
+def test_pcb_stackup_and_rf_microstrip_rules():
+    """
+    Verify 4-layer PCB design rules specification file:
+    - 4-layer FR4 stackup
+    - 50-ohm microstrip impedance calculation
+    - Star-point Kelvin grounding and thermal dissipation vias
+    """
+    pcb_rules_path = os.path.join(project_root, 'hardware', 'pcb', 'pcb_stackup_and_design_rules.md')
+    assert os.path.exists(pcb_rules_path), "PCB design rules markdown file missing"
+
+    with open(pcb_rules_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+
+    assert "4-layer FR-4" in content or "4-Layer" in content
+    assert "ENIG" in content
+    assert "Microstrip Calculation" in content
+    assert "Kelvin Ground" in content or "Star-Point" in content
+    assert "38.75" in content, "BOM cost must match $38.75 target"
+
+
+def test_freertos_embedded_supervisor_architecture():
+    """
+    Verify FreeRTOS embedded supervisor header and C implementation files.
+    """
+    header_path = os.path.join(project_root, 'hardware', 'firmware_algorithms', 'freertos_multi_task_supervisor.h')
+    source_path = os.path.join(project_root, 'hardware', 'firmware_algorithms', 'freertos_multi_task_supervisor.c')
+
+    assert os.path.exists(header_path), "FreeRTOS supervisor header missing"
+    assert os.path.exists(source_path), "FreeRTOS supervisor C source missing"
+
+    with open(header_path, 'r', encoding='utf-8') as f:
+        h_content = f.read()
+    with open(source_path, 'r', encoding='utf-8') as f:
+        c_content = f.read()
+
+    assert "Task_FastDAQ" in h_content
+    assert "Task_ZVSControl" in h_content
+    assert "Task_SafetySupervisor" in h_content
+    assert "bms_supervisor_check_safety_limits" in c_content
+    assert "bms_supervisor_compute_zvs_rebalancing_targets" in c_content
+
+
+def test_spice_zvs_transient_simulation_model():
+    """
+    Verify automated SPICE ZVS transient simulation module:
+    - Inductor current ripple and RMS
+    - Zero-voltage switching dead-time transition
+    - System electrical efficiency >= 90%
+    """
+    from hardware.spice.run_spice_simulation import ZVSSpiceSimulator
+
+    sim = ZVSSpiceSimulator(v_high=3.90, v_low=3.40, i_target=2.50)
+    results = sim.run_transient_cycle(num_points=500)
+
+    assert "efficiency_percent" in results
+    assert results["efficiency_percent"] >= 90.0, f"SPICE efficiency {results['efficiency_percent']}% < 90%"
+    assert results["i_rms_a"] > 2.0, "RMS current should be around target current"
+    assert results["p_loss_total_w"] < 0.500, "Total losses should be under 500 mW with ZVS"
+

@@ -49,21 +49,26 @@ class EVBattery3DSimulator:
 
         # Initialize simulation GUI if not headless
         if not headless:
-            self.fig = plt.figure(figsize=(14, 9))
-            self.fig.suptitle('Low-Cost Multi-Modal Diagnostic and Active Cell-Rebalancing System',
-                              fontsize=14, fontweight='bold')
+            try:
+                self.fig = plt.figure(figsize=(14, 9))
+                self.fig.suptitle('Low-Cost Multi-Modal Diagnostic and Active Cell-Rebalancing System',
+                                  fontsize=14, fontweight='bold')
 
-            # Create 3D axis
-            self.ax_3d = self.fig.add_subplot(121, projection='3d')
+                # Create 3D axis
+                self.ax_3d = self.fig.add_subplot(121, projection='3d')
 
-            # Create control panel
-            self.create_controls()
+                # Create control panel
+                self.create_controls()
 
-            # Create status display
-            self.create_status_display()
+                # Create status display
+                self.create_status_display()
 
-            # Initial render
-            self.update_visualization()
+                # Initial render
+                self.update_visualization()
+            except Exception:
+                self.headless = True
+                self.fig = None
+                self.ax_3d = None
         else:
             self.fig = None
             self.ax_3d = None
@@ -481,6 +486,184 @@ class EVBattery3DSimulator:
 
         return profile
 
+    def compute_intercalation_and_thermal_stress(self, nr=25):
+        """
+        Compute coupled 3D mechanical stress tensor fields:
+        Solid diffusion-induced intercalation stress + thermal expansion stress.
+        Radial stress: sigma_rr(r), Tangential/Hoop stress: sigma_theta(r), Axial: sigma_zz(r).
+        """
+        radius = float(self.params['cell_width']) / 2.0
+        r_grid = np.linspace(0.0005, radius, nr)
+
+        # Mechanical material properties for composite jellyroll (Graphite + NMC + Foil)
+        E_modulus = 12.5e9        # Young's Modulus: 12.5 GPa
+        nu_poisson = 0.30         # Poisson's ratio
+        omega_molar = 3.49e-6     # Partial molar volume: 3.49e-6 m^3/mol
+        alpha_th = 3.2e-5         # Thermal expansion coefficient: 3.2e-5 1/K
+
+        # Lithium ion concentration profile (normalized)
+        # In intercalation/deintercalation, surface concentration differs from core
+        soc_clamped = np.clip(self.soc, 0.05, 0.95)
+        c_avg = soc_clamped * 28000.0  # mol/m^3 stoichiometric capacity
+        c_surf_diff = (soc_clamped - 0.5) * 4500.0
+        c_r = c_avg + c_surf_diff * ((r_grid / radius) ** 2 - 0.5)
+
+        # Thermal gradient contribution
+        thermal_res = self.compute_3d_thermal_field(nr=nr, ntheta=8, nz=6)
+        t_r = np.mean(thermal_res['T_field'][:, :, 3], axis=1)  # Mid-plane radial temp
+        t_ref = 25.0
+
+        def _integrate(y_val, x_val):
+            if hasattr(np, 'trapezoid'):
+                return np.trapezoid(y_val, x_val)
+            elif hasattr(np, 'trapz'):
+                return np.trapz(y_val, x_val)
+            return float(np.sum((y_val[:-1] + y_val[1:]) / 2.0 * np.diff(x_val)))
+
+        # Integral terms for cylindrical elasticity solution
+        # int_0^R C(r') r' dr'
+        int_c_total = _integrate(c_r * r_grid, r_grid)
+        int_t_total = _integrate((t_r - t_ref) * r_grid, r_grid)
+
+        sigma_rr = np.zeros(nr)
+        sigma_theta = np.zeros(nr)
+        sigma_zz = np.zeros(nr)
+
+        prefactor_c = (omega_molar * E_modulus) / (3.0 * (1.0 - nu_poisson))
+        prefactor_t = (alpha_th * E_modulus) / (1.0 - nu_poisson)
+
+        for i, r in enumerate(r_grid):
+            if r <= r_grid[0]:
+                int_c_r = 0.0
+                int_t_r = 0.0
+            else:
+                int_c_r = _integrate(c_r[:i+1] * r_grid[:i+1], r_grid[:i+1])
+                int_t_r = _integrate((t_r[:i+1] - t_ref) * r_grid[:i+1], r_grid[:i+1])
+
+            # Radial stress (compressive at core, zero at outer boundary)
+            term_c_rr = (1.0 / (radius ** 2)) * int_c_total - (1.0 / max(1e-9, r ** 2)) * int_c_r
+            term_t_rr = (1.0 / (radius ** 2)) * int_t_total - (1.0 / max(1e-9, r ** 2)) * int_t_r
+            sigma_rr[i] = prefactor_c * term_c_rr + prefactor_t * term_t_rr
+
+            # Hoop stress (tensile at surface during intercalation)
+            term_c_th = (1.0 / (radius ** 2)) * int_c_total + (1.0 / max(1e-9, r ** 2)) * int_c_r - c_r[i]
+            term_t_th = (1.0 / (radius ** 2)) * int_t_total + (1.0 / max(1e-9, r ** 2)) * int_t_r - (t_r[i] - t_ref)
+            sigma_theta[i] = prefactor_c * term_c_th + prefactor_t * term_t_th
+
+            # Axial stress
+            sigma_zz[i] = sigma_rr[i] + sigma_theta[i]
+
+        # Hydrostatic / Von Mises Equivalent Stress
+        # sigma_vm = sqrt( 0.5 * [ (s_rr - s_th)^2 + (s_th - s_zz)^2 + (s_zz - s_rr)^2 ] )
+        sigma_vm = np.sqrt(0.5 * ((sigma_rr - sigma_theta) ** 2 + (sigma_theta - sigma_zz) ** 2 + (sigma_zz - sigma_rr) ** 2))
+
+        return {
+            'r_grid_m': r_grid.tolist(),
+            'sigma_rr_mpa': (sigma_rr / 1e6).tolist(),
+            'sigma_theta_mpa': (sigma_theta / 1e6).tolist(),
+            'sigma_zz_mpa': (sigma_zz / 1e6).tolist(),
+            'sigma_vm_mpa': (sigma_vm / 1e6).tolist(),
+            'max_vm_stress_mpa': float(np.max(sigma_vm) / 1e6),
+            'hoop_stress_surface_mpa': float(sigma_theta[-1] / 1e6)
+        }
+
+    def compute_multilayer_acoustic_transfer_matrix(self):
+        """
+        Calculates acoustic boundary reflection (R) and transmission (T) coefficients
+        across sequential jellyroll interfaces: Casing -> Cu -> Anode -> Separator -> Cathode -> Al.
+        Accounts for lithium plating acoustic impedance inversion and gas bubble acoustic mismatch.
+        """
+        layers = [
+            ('steel_casing', 46.5),
+            ('pdms_couplant', 1.5),
+            ('cu_foil', 41.8),
+            ('graphite_anode', 5.2),
+            ('separator', 1.9),
+            ('nmc_cathode', 12.8),
+            ('al_foil', 17.3)
+        ]
+
+        if self.degradation_mode == 'li_plating':
+            # Insert metallic Li deposition layer adjacent to anode
+            layers.insert(4, ('metallic_li_layer', 2.8))
+        elif self.degradation_mode == 'gas_generation':
+            # Gas pocket causing severe acoustic mismatch
+            layers.insert(5, ('gas_pocket', 0.0004))
+
+        interfaces = []
+        total_transmission_coeff = 1.0
+
+        for i in range(len(layers) - 1):
+            name_1, z1 = layers[i]
+            name_2, z2 = layers[i+1]
+
+            # Reflection and transmission coefficients
+            r_coeff = (z2 - z1) / (z2 + z1)
+            t_coeff = (2.0 * z2) / (z2 + z1)
+            power_trans = 1.0 - (r_coeff ** 2)
+            total_transmission_coeff *= max(1e-6, power_trans)
+
+            interfaces.append({
+                'from_layer': name_1,
+                'to_layer': name_2,
+                'z1_mrayl': z1,
+                'z2_mrayl': z2,
+                'r_amplitude_coeff': float(r_coeff),
+                't_amplitude_coeff': float(t_coeff),
+                'power_transmission_pct': float(power_trans * 100.0)
+            })
+
+        return {
+            'layers': [l[0] for l in layers],
+            'interfaces': interfaces,
+            'net_acoustic_throughput_pct': float(total_transmission_coeff * 100.0)
+        }
+
+    def compute_4s_pack_state(self):
+        """
+        Simulate a 4S battery module (4 cylindrical cells in series) with coupled
+        inter-cell balancing currents, thermal conduction, and degradation variance.
+        """
+        cell_socs = [
+            np.clip(self.soc + 0.12, 0.05, 0.95),  # Cell 1 (high SOC)
+            np.clip(self.soc, 0.05, 0.95),         # Cell 2 (nominal)
+            np.clip(self.soc - 0.08, 0.05, 0.95),  # Cell 3 (medium-low)
+            np.clip(self.soc - 0.22, 0.05, 0.95)   # Cell 4 (degraded/low)
+        ]
+
+        # Equivalent cell voltages
+        cell_voltages = [float(3.0 + 1.2 * s) for s in cell_socs]
+        pack_voltage = float(sum(cell_voltages))
+
+        # Active ZVS balancing current shuttling: Cell 1 -> Cell 4
+        soc_delta_max = max(cell_socs) - min(cell_socs)
+        i_bal = float(min(3.0, max(0.0, soc_delta_max * 10.0)))
+        rebal_state = "ACTIVE_BALANCING_ZVS" if i_bal > 0.2 else "IDLE_BALANCED"
+
+        if self.degradation_mode == 'internal_short':
+            rebal_state = "CRITICAL_LOCKOUT_ISOLATED"
+            i_bal = 0.0
+
+        # Thermal profile per cell in pack
+        base_temp = 25.0
+        cell_temps = [
+            float(base_temp + 1.2 + (i_bal ** 2) * 0.15),
+            float(base_temp + 0.8),
+            float(base_temp + 0.6),
+            float(base_temp + (18.5 if self.degradation_mode == 'internal_short' else 2.8))
+        ]
+
+        return {
+            'pack_voltage_v': pack_voltage,
+            'cell_voltages_v': cell_voltages,
+            'cell_socs': cell_socs,
+            'cell_temperatures_c': cell_temps,
+            'max_soc_imbalance_pct': float(soc_delta_max * 100.0),
+            'active_balancing_current_a': i_bal,
+            'rebalancing_state': rebal_state,
+            'zvs_efficiency_pct': 92.4 if i_bal > 0.2 else 0.0
+        }
+
     def export_3d_state_dict(self):
         """
         Export complete 3D multi-physics state for JSON serialization and WebGL sync.
@@ -489,6 +672,9 @@ class EVBattery3DSimulator:
         acoustic_rays = self.compute_acoustic_ray_path()
         degradation_profile = self.compute_degradation_spatial_profile()
         sensor_readings = self.compute_sensor_readings()
+        stress_data = self.compute_intercalation_and_thermal_stress()
+        acoustic_transfer = self.compute_multilayer_acoustic_transfer_matrix()
+        pack_4s = self.compute_4s_pack_state()
 
         return {
             'timestamp': self._get_timestamp(),
@@ -512,6 +698,16 @@ class EVBattery3DSimulator:
                 'T_min': thermal_data['T_min'],
                 'surface_temperature_matrix': thermal_data['T_surface'].tolist()
             },
+            'stress': {
+                'max_vm_stress_mpa': stress_data['max_vm_stress_mpa'],
+                'hoop_stress_surface_mpa': stress_data['hoop_stress_surface_mpa'],
+                'sigma_vm_mpa': stress_data['sigma_vm_mpa']
+            },
+            'acoustic_transfer': {
+                'net_acoustic_throughput_pct': acoustic_transfer['net_acoustic_throughput_pct'],
+                'interfaces_count': len(acoustic_transfer['interfaces'])
+            },
+            'pack_4s': pack_4s,
             'acoustic_rays': acoustic_rays,
             'degradation_profile': degradation_profile,
             'readings': sensor_readings

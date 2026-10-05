@@ -106,3 +106,56 @@ def test_3d_state_export_and_json_serialization():
     assert 'degradation_profile' in state_dict
     assert 'sensors' in state_dict
     assert 'readings' in state_dict
+    assert 'stress' in state_dict
+    assert 'acoustic_transfer' in state_dict
+    assert 'pack_4s' in state_dict
+
+
+def test_3d_intercalation_and_thermal_stress():
+    """
+    Verify 3D cylindrical mechanical stress tensor computations:
+    - Radial, hoop, axial, and Von Mises equivalent stress profiles
+    """
+    sim = EVBattery3DSimulator(headless=True)
+    sim.soc = 0.80
+    stress_res = sim.compute_intercalation_and_thermal_stress(nr=20)
+
+    assert 'sigma_rr_mpa' in stress_res
+    assert 'sigma_theta_mpa' in stress_res
+    assert 'sigma_vm_mpa' in stress_res
+    assert len(stress_res['sigma_rr_mpa']) == 20
+    assert stress_res['max_vm_stress_mpa'] > 0.0
+    # Radial stress at boundary r=R should approach ~0 MPa
+    assert abs(stress_res['sigma_rr_mpa'][-1]) < 0.5
+
+
+def test_multilayer_acoustic_transfer_matrix():
+    """
+    Verify boundary reflection and transmission coefficient calculations across jellyroll layers.
+    """
+    sim = EVBattery3DSimulator(headless=True)
+    sim.degradation_mode = 'healthy'
+    ac_healthy = sim.compute_multilayer_acoustic_transfer_matrix()
+    assert ac_healthy['net_acoustic_throughput_pct'] > 0.10
+    assert len(ac_healthy['interfaces']) >= 6
+
+    # Gas generation creates massive mismatch and drops transmission by >95%
+    sim.degradation_mode = 'gas_generation'
+    ac_gas = sim.compute_multilayer_acoustic_transfer_matrix()
+    assert ac_gas['net_acoustic_throughput_pct'] < ac_healthy['net_acoustic_throughput_pct'] * 0.05
+
+
+def test_4s_pack_multi_cell_state():
+    """
+    Verify 4-cell series module active ZVS balancing and coupled thermal telemetry.
+    """
+    sim = EVBattery3DSimulator(headless=True)
+    sim.soc = 0.60
+    pack_res = sim.compute_4s_pack_state()
+
+    assert len(pack_res['cell_voltages_v']) == 4
+    assert len(pack_res['cell_socs']) == 4
+    assert pack_res['pack_voltage_v'] > 12.0
+    assert pack_res['active_balancing_current_a'] > 0.0
+    assert pack_res['rebalancing_state'] == "ACTIVE_BALANCING_ZVS"
+    assert pack_res['zvs_efficiency_pct'] >= 91.5

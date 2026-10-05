@@ -5,6 +5,8 @@ Unit tests for the 3D EV battery simulation module.
 
 import sys
 import os
+import matplotlib
+matplotlib.use('Agg')
 
 
 def test_imports():
@@ -22,8 +24,7 @@ def test_simulation_creation():
     sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
     from ev_battery_3d_simulation import EVBattery3DSimulator
     
-    sim = EVBattery3DSimulator.__new__(EVBattery3DSimulator)
-    sim.__init__()
+    sim = EVBattery3DSimulator(headless=True)
     assert sim.soc == 0.5
     assert sim.degradation_mode == 'healthy'
 
@@ -33,8 +34,7 @@ def test_parameter_updates():
     sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
     from ev_battery_3d_simulation import EVBattery3DSimulator
     
-    sim = EVBattery3DSimulator.__new__(EVBattery3DSimulator)
-    sim.__init__()
+    sim = EVBattery3DSimulator(headless=True)
     
     sim.update_soc(0.8)
     assert abs(sim.soc - 0.8) < 1e-6
@@ -48,8 +48,7 @@ def test_sensor_readings():
     sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
     from ev_battery_3d_simulation import EVBattery3DSimulator
     
-    sim = EVBattery3DSimulator.__new__(EVBattery3DSimulator)
-    sim.__init__()
+    sim = EVBattery3DSimulator(headless=True)
     
     readings = sim.compute_sensor_readings()
     

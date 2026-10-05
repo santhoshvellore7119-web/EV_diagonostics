@@ -218,7 +218,7 @@ def build_pdf():
     story.append(Paragraph('2. <b>LNA Receiver:</b> The acoustic echo received at X2 (~10-50 mV amplitude) is AC-coupled to the AD8065 JFET operational amplifier configured with a gain of +40 dB (100x) and a 2nd-order Sallen-Key bandpass filter centered at 1.0 MHz (Q=4).', body_style))
     story.append(Paragraph('3. <b>Zero-Crossing Timing:</b> The amplified echo feeds the TLV3501 ultrafast comparator. The comparator generates a clean digital STOP pulse into the TI TDC7200 Time-to-Digital Converter.', body_style))
     story.append(Paragraph('4. <b>Precision Timing Calculation:</b> The TDC7200 measures elapsed time between START (excitation trigger) and STOP with 55 ps resolution, transmitting the raw clock counts over SPI at 10 MHz.', body_style))
-    story.append(Spacer(1, 6))
+    story.append(Spacer(1, 4))
 
     story.append(Paragraph('<b>3.2 Zero-Voltage Switching (ZVS) Quasi-Resonant Active Balancer</b>', h2_style))
     story.append(Paragraph('To maximize round-trip efficiency (>92%) and eliminate switching heat, the power stage utilizes a quasi-resonant ZVS buck-boost topology:', body_style))
@@ -227,8 +227,62 @@ def build_pdf():
     story.append(Paragraph('• <b>Kelvin 4-Wire ESR Auto-Nulling:</b> Dynamic software nulling eliminates false voltage sag caused by oxidized second-life contact fixtures: V_true = V_sense - I_shunt * R_contact_est.', body_style))
     story.append(Spacer(1, 6))
 
-    # Chapter 4: Pinout Table
-    story.append(Paragraph('4. ESP32-S3 Pinout & Interface Matrix', h1_style))
+    # Chapter 4: 4-Layer PCB Stackup & RF Layout Rules
+    story.append(Paragraph('4. 4-Layer High-Frequency PCB Stackup & Microstrip Design Rules', h1_style))
+    story.append(Paragraph('The physical layout strictly segregates high-current switching harmonics (100 kHz / 2.5 A) from picosecond-level ultrasonic analog signals:', body_style))
+    
+    pcb_data = [
+        [Paragraph('Layer', table_header), Paragraph('Layer Name', table_header), Paragraph('Copper / Thickness', table_header), Paragraph('Material / Dielectric', table_header), Paragraph('Function', table_header)],
+        [Paragraph('L1 (Top)', table_cell), Paragraph('RF & Components', table_cell), Paragraph('1.0 oz (35 µm) / 0.20 mm', table_cell), Paragraph('FR-4 (εr=4.4, tanδ=0.02)', table_cell), Paragraph('50Ω Ultrasonic microstrips & ICs', table_cell)],
+        [Paragraph('L2 (Inner 1)', table_cell), Paragraph('Solid GND Plane', table_cell), Paragraph('1.0 oz (35 µm) / 1.00 mm', table_cell), Paragraph('FR-4 Core (εr=4.5)', table_cell), Paragraph('Uninterrupted low-impedance return', table_cell)],
+        [Paragraph('L3 (Inner 2)', table_cell), Paragraph('Power Plane', table_cell), Paragraph('1.0 oz (35 µm) / 0.20 mm', table_cell), Paragraph('FR-4 Prepreg (εr=4.4)', table_cell), Paragraph('+5V, +3.3V, +12V distribution rails', table_cell)],
+        [Paragraph('L4 (Bottom)', table_cell), Paragraph('Power Switches', table_cell), Paragraph('1.0 oz (35 µm) / —', table_cell), Paragraph('Solder Mask + ENIG', table_cell), Paragraph('High-current balancing loops & vias', table_cell)],
+    ]
+    pcb_table = Table(pcb_data, colWidths=[55, 95, 115, 115, 124])
+    pcb_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#0f172a')),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
+        ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#f8fafc')]),
+        ('PADDING', (0,0), (-1,-1), 3),
+        ('ALIGN', (0,0), (0,-1), 'CENTER'),
+    ]))
+    story.append(pcb_table)
+    story.append(Paragraph('• <b>50Ω Microstrip Trace:</b> Trace width w = 0.36 mm over h = 0.20 mm dielectric ensures Z_0 = 50.2Ω matching the piezo SMA input.', body_style))
+    story.append(Paragraph('• <b>Star-Point Kelvin Ground:</b> AGND and PGND are separated across top/bottom layers and joined exclusively at a single 0805 net-tie point adjacent to the bulk input decoupling capacitors.', body_style))
+    story.append(Spacer(1, 6))
+
+    # Chapter 5: FreeRTOS Firmware Architecture
+    story.append(Paragraph('5. FreeRTOS Dual-Core Real-Time Supervisor Architecture', h1_style))
+    story.append(Paragraph('The embedded firmware runs on the ESP32-S3 dual-core processor using FreeRTOS with strict deterministic task scheduling:', body_style))
+    story.append(Paragraph('• <b>Core 0 (100 Hz FastDAQ & 1 kHz Safety):</b> Task_FastDAQ coordinates ultrasonic ToF pulses and 16-bit INA226 ADC sampling; Task_SafetySupervisor executes sub-millisecond hardware fault interlocks.', body_style))
+    story.append(Paragraph('• <b>Core 1 (100 kHz ZVS Control & Edge ML):</b> Task_ZVSControl modulates synchronous PWM gate timings with 25 ns dead-time; Edge ML inference executes real-time multi-modal classification.', body_style))
+    story.append(Spacer(1, 6))
+
+    # Page Break for Chapter 6 & 7
+    story.append(PageBreak())
+
+    # Chapter 6: SPICE & Simulation Standards
+    story.append(Paragraph('6. SPICE Transient Loss Modeling & 3D Stress Physics', h1_style))
+    story.append(Paragraph('<b>6.1 SPICE Resonant Switching & Loss Breakdown:</b>', h2_style))
+    story.append(Paragraph('The automated SPICE solver (hardware/spice/run_spice_simulation.py) models conduction, gate charge, and quasi-resonant body diode conduction during 2.5 A shuttling:', body_style))
+    story.append(Paragraph('• Conduction Losses: 70.0 mW (MOSFETs 3.2mΩ, Inductor 3.1mΩ, Shunt 5.0mΩ).', body_style))
+    story.append(Paragraph('• ZVS Soft-Switching Losses: 2.2 mW (85% reduction vs hard switching).', body_style))
+    story.append(Paragraph('• Gate Drive Losses: 96.0 mW (2 x Qg=48nC @ 100kHz). <b>Overall System Efficiency: 98.02% (Peak).</b>', body_style))
+    story.append(Spacer(1, 4))
+
+    story.append(Paragraph('<b>6.2 3D Intercalation Stress Tensors & Acoustic Transfer Matrix:</b>', h2_style))
+    story.append(Paragraph('The enhanced 3D spatial simulation (simulation_3d_demo/ev_battery_3d_simulation.py) solves coupled solid diffusion concentration gradients C(r) and thermal expansion fields, generating radial, hoop, and Von Mises stress distributions (σ_VM ~ 118 kPa). The multi-layer acoustic transfer matrix calculates transmission coefficients across 7 physical boundaries (Steel, PDMS, Cu, Anode, Separator, NMC Cathode, Al), revealing severe 95% attenuation under electrolyte gas generation.', body_style))
+    story.append(Spacer(1, 6))
+
+    # Chapter 7: MATLAB/Simulink Co-Simulation
+    story.append(Paragraph('7. MATLAB / Simulink 4S Active Balancing & DEKF Co-Estimator', h1_style))
+    story.append(Paragraph('The repository provides two dedicated MATLAB/Simulink validation scripts:', body_style))
+    story.append(Paragraph('• <b>simulate_4s_active_balancing.m:</b> Simulates a 4-cell series pack under 20% initial SOC imbalance. The ZVS charge-shuttling rebalancer converges pack imbalance from 20.0% down to &lt;1.0% in 120 seconds with Coulomb efficiency &gt;96.5%.', body_style))
+    story.append(Paragraph('• <b>dekf_ecm_joint_estimator.m:</b> Dual Extended Kalman Filter running on 2-RC ECM model. Concurrently tracks rapid SOC dynamics and slowly varying degradation parameters (R0, R1, C1) with &lt;3% estimation error under high sensor noise.', body_style))
+    story.append(Spacer(1, 6))
+
+    # Chapter 8: ESP32-S3 Pinout & Interface Matrix
+    story.append(Paragraph('8. ESP32-S3 Pinout & Interface Matrix', h1_style))
     pin_data = [
         [Paragraph('Pin Name', table_header), Paragraph('GPIO', table_header), Paragraph('Peripheral', table_header), Paragraph('Connected Component', table_header), Paragraph('Signal Function', table_header)],
         [Paragraph('PULSE_TRIG', table_cell), Paragraph('GPIO 4', table_cell), Paragraph('RMT CH0', table_cell), Paragraph('TC4420 Gate Driver', table_cell), Paragraph('100 ns PZT Excitation Trigger', table_cell)],
@@ -250,49 +304,27 @@ def build_pdf():
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#0f172a')),
         ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
         ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#f8fafc')]),
-        ('PADDING', (0,0), (-1,-1), 3.5),
+        ('PADDING', (0,0), (-1,-1), 3.0),
         ('ALIGN', (0,0), (1,-1), 'CENTER'),
     ]))
     story.append(pin_table)
-    story.append(Spacer(1, 8))
+    story.append(Spacer(1, 6))
 
-    # Page Break for Chapter 5
+    # Page Break for Chapter 9 & 10
     story.append(PageBreak())
 
-    # Chapter 5: Mechanical Mounting & Acoustic Coupling
-    story.append(Paragraph('5. Transducer Mounting & Acoustic Coupling Guide', h1_style))
+    # Chapter 9: Mechanical Mounting & Acoustic Coupling
+    story.append(Paragraph('9. Transducer Mounting & Acoustic Coupling Guide', h1_style))
     story.append(Paragraph('Acoustic impedance matching and stable contact pressure are paramount for sub-percent ToF diagnostic fidelity:', body_style))
     story.append(Paragraph('• <b>Acoustic Couplant Selection:</b> Use Dow Corning Sylgard 184 polydimethylsiloxane (PDMS) elastomer pads (Z ~ 1.5 MRayl) for permanent vibration-resistant mounting, or medical ultrasound gel (Aquasonic 100) for benchtop testing.', body_style))
     story.append(Paragraph('• <b>Clamping Force:</b> Apply a calibrated normal force of 7.5 +/- 1.5 N per transducer using the spring-loaded 3D-printed PETG fixture. Excessive force deforms cylindrical 18650 casing walls; insufficient force introduces micro-air gaps (Z_air = 0.0004 MRayl, causing 99.9% acoustic reflection).', body_style))
     story.append(Paragraph('• <b>Axial Alignment:</b> Position Tx and Rx transducers strictly along the diametric centerline (180 deg +/- 2 deg opposition) at the vertical midpoint (Z = 32.5 mm) to avoid casing end-cap reflections.', body_style))
-    story.append(Spacer(1, 6))
+    story.append(Spacer(1, 4))
 
-    # Chapter 6: Firmware & Calibration
-    story.append(Paragraph('6. Temperature-Compensated Time-of-Flight (TC-ToF) & AGC Calibration', h1_style))
-    story.append(Paragraph('To prevent false classifications during environmental temperature swings, the MCU executes TC-ToF compensation:', body_style))
-    story.append(Paragraph('<b>Formula:</b> c(T) = c_0 - α_T*(T - T_0) + β_p*P_clamp, where c_0 = 2500 m/s, α_T = 4.5 m/s/°C, β_p = 0.18 m/s/kPa.', body_style))
-    story.append(Paragraph('<b>6.1 PlatformIO / ESP-IDF Build & Flash:</b>', h2_style))
-    code_text = '''# 1. Navigate to firmware directory and build firmware
-cd firmware && pio run -e esp32-s3
+    # Chapter 10: Multi-Layer Safety Interlocks & Checklist
+    story.append(Paragraph('10. Multi-Layer Safety Interlocks & Benchtop Validation Checklist', h1_style))
+    story.append(Paragraph('The hardware architecture enforces a 3-tier fail-safe safety interlock hierarchy (Tier 1 Hardware Comparator &lt;50µs, Tier 2 FreeRTOS Supervisor &lt;5ms, Tier 3 ML Decision Engine &lt;50ms).', body_style))
 
-# 2. Flash to ESP32-S3 over USB CDC COM port
-pio run -e esp32-s3 -t upload --upload-port COM3
-
-# 3. Open serial telemetry monitor (115200 baud, 8N1)
-pio device monitor -b 115200'''
-    story.append(Paragraph(f'<font face="Courier" size="7.2">{code_text.replace(chr(10), "<br/>")}</font>', code_style))
-    story.append(Spacer(1, 6))
-
-    # Chapter 7: Safety Interlocks
-    story.append(Paragraph('7. Multi-Layer Hardware & Software Safety Interlocks', h1_style))
-    story.append(Paragraph('The hardware architecture enforces a 3-tier fail-safe safety interlock hierarchy:', body_style))
-    story.append(Paragraph('• <b>Tier 1 (Autonomous Hardware Trip &lt; 50 µs):</b> Comparator-based overcurrent lockout shuts down gate driver TPS28225 PWM if current exceeds 6.5A or temperature exceeds 65°C, de-energizing the opto-isolated solid state relay (K1).', body_style))
-    story.append(Paragraph('• <b>Tier 2 (Firmware Safety Supervisor &lt; 5 ms):</b> Core 1 FreeRTOS high-priority task checks telemetry limits (V_min=2.5V, V_max=4.25V, T_max=55°C, dT/dt &gt; 1.2°C/s). Detects micro-short core runaway triggering instantaneous cell isolation.', body_style))
-    story.append(Paragraph('• <b>Tier 3 (ML Multi-Modal Reasoning Interlock &lt; 50 ms):</b> ML processor classification of internal_short triggers CRITICAL_LOCKOUT_ISOLATED state in the active rebalancing decision engine.', body_style))
-    story.append(Spacer(1, 6))
-
-    # Chapter 8: Benchtop Validation Checklist
-    story.append(Paragraph('8. Step-by-Step Benchtop Validation Checklist', h1_style))
     check_data = [
         [Paragraph('Step', table_header), Paragraph('Validation Phase', table_header), Paragraph('Procedure & Acceptance Criteria', table_header), Paragraph('Status', table_header)],
         [Paragraph('1', table_cell), Paragraph('Power Rails Check', table_cell), Paragraph('Verify 3.3V, 12V, 48V boost rails within ±2% tolerance with DMM.', table_cell), Paragraph('[  ] PASS', table_cell)],
@@ -309,7 +341,7 @@ pio device monitor -b 115200'''
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#0f172a')),
         ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
         ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#f8fafc')]),
-        ('PADDING', (0,0), (-1,-1), 3.5),
+        ('PADDING', (0,0), (-1,-1), 3.0),
         ('ALIGN', (0,0), (0,-1), 'CENTER'),
         ('ALIGN', (3,0), (3,-1), 'CENTER'),
     ]))

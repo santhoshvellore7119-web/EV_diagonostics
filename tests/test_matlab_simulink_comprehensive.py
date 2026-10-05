@@ -33,8 +33,10 @@ def test_matlab_script_files_integrity():
         'battery_system_demo.m',
         'utils/degradation_mode_library.m',
         'utils/estimate_ecm_params_rls.m',
+        'utils/dekf_ecm_joint_estimator.m',
         'utils/simulate_cell_response.m',
-        'scripts/run_all_scenarios.m'
+        'scripts/run_all_scenarios.m',
+        'scripts/simulate_4s_active_balancing.m'
     ]
     for rel_path in expected_files:
         full_path = os.path.join(matlab_dir, rel_path)
