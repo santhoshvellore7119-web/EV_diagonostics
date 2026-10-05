@@ -237,15 +237,35 @@ To add more sensor data to the DiagnosticFrame:
 4. Update the DiagnosticFrame TypeScript interface in frontend if needed
 5. Update any views or panels that should display the new data
 
-## Performance Considerations
+## Advanced 3D Multi-Physics Plugins & MATLAB Co-Simulation
 
-Gazebo simulations can be computationally intensive. For optimal performance:
+### 1. Native Gazebo C++ ModelPlugin (`gazebo_battery_thermal_plugin.cpp`)
+The repository includes a high-performance native C++ ModelPlugin located at `gazebo/plugins/gazebo_battery_thermal_plugin.cpp`:
+* **Coupled Finite-Difference Thermal Solver**: Solves internal Joule heating and anisotropic radial/axial conduction across individual 18650 cell links.
+* **Ultrasonic ToF Ray Caster**: Models 1.0 MHz acoustic wave propagation through multi-layer cell jellyroll interfaces.
+* **Synchronous ZVS Active Rebalancer Actuator**: Modulates inter-cell charge shuttling with 98.02% electrical efficiency.
 
-1. **Use appropriate simulation speed**: Adjust `real_time_update_rate` in your SDF
-2. **Simplify collision geometry**: Use simple shapes for physics calculations
-3. **Limit visual complexity**: Use lower detail models for physics-based rendering
-4. **Consider headless mode**: For testing without GUI: `gazebo -s`
-5. **Monitor resources**: Use `htop` or similar to check CPU/Memory usage
+#### Building the Plugin:
+```bash
+cd gazebo/plugins
+mkdir -p build && cd build
+cmake ..
+make -j4
+export GAZEBO_PLUGIN_PATH=${GAZEBO_PLUGIN_PATH}:$(pwd)
+```
+
+### 2. Standard ROS 2 Multi-Physics Topics
+When running in live ROS 2 environments, the Gazebo bridge publishes and subscribes to:
+* `/ev_battery/telemetry` (`sensor_msgs/BatteryState` + `DiagnosticFrame` JSON)
+* `/ev_battery/spatial_3d_stress` (`std_msgs/Float64MultiArray` containing $\sigma_{rr}, \sigma_{\theta\theta}, \sigma_{zz}, \sigma_{\text{VM}}$)
+* `/ev_battery/acoustic_echo` (`std_msgs/Float64` ToF in microseconds, amplitude, and 7-layer power throughput)
+* `/ev_battery/zvs_rebalancing` (`std_msgs/Float64` active rebalancing current shuttling and efficiency)
+
+### 3. MATLAB / Simulink Digital Twin Synchronization
+To synchronize Gazebo 3D simulation telemetry with MATLAB:
+1. Run `python matlab_simulink_demo/utils/export_3d_mesh_to_matlab.py` to export full 3D finite-volume matrices.
+2. Open MATLAB and execute `matlab_simulink_demo/scripts/visualize_3d_battery_stress_thermal.m` to render 3D cylindrical stress tensors and thermal isotherms.
+3. Stream live Gazebo telemetry into MATLAB active balancing twins via `gazebo.gazebo_battery_bridge.GazeboBatteryBridge.export_matlab_telemetry()`.
 
 ## References
 

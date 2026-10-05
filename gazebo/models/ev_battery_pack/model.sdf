@@ -223,7 +223,7 @@
       <child>rebalancer_power_stage</child>
     </joint>
 
-    <!-- Multi-Spectral Thermal Camera Sensor Plugin -->
+    <!-- Multi-Spectral Thermal Camera Sensor -->
     <sensor name="pack_thermal_imager" type="camera">
       <pose>0 0 0.35 0 1.5708 0</pose>
       <always_on>1</always_on>
@@ -241,5 +241,48 @@
         </clip>
       </camera>
     </sensor>
+
+    <!-- Ultrasonic PZT Transceiver Array on Cell Surfaces -->
+    <sensor name="pzt_ultrasonic_array" type="ray">
+      <pose>0 0 0.08 0 0 0</pose>
+      <always_on>1</always_on>
+      <update_rate>100</update_rate>
+      <ray>
+        <scan>
+          <horizontal>
+            <samples>4</samples>
+            <resolution>1</resolution>
+            <min_angle>-0.1</min_angle>
+            <max_angle>0.1</max_angle>
+          </horizontal>
+        </scan>
+        <range>
+          <min>0.005</min>
+          <max>0.020</max>
+          <resolution>0.00001</resolution>
+        </range>
+      </ray>
+    </sensor>
+
+    <!-- Multi-Physics 3D Battery Thermal & Stress Conduction Plugin -->
+    <plugin name="gazebo_battery_thermal_plugin" filename="libgazebo_battery_thermal_plugin.so">
+      <update_rate>100.0</update_rate>
+      <nominal_capacity_ah>2.6</nominal_capacity_ah>
+      <casing_thermal_conductivity>205.0</casing_thermal_conductivity>
+      <radial_thermal_conductivity>1.20</radial_thermal_conductivity>
+      <axial_thermal_conductivity>28.0</axial_thermal_conductivity>
+      <specific_heat_capacity>950.0</specific_heat_capacity>
+      <ambient_temperature_c>25.0</ambient_temperature_c>
+      <ultrasonic_frequency_mhz>1.0</ultrasonic_frequency_mhz>
+      <tof_baseline_us>8.0</tof_baseline_us>
+    </plugin>
+
+    <!-- Synchronous ZVS Active Rebalancer Actuator Plugin -->
+    <plugin name="gazebo_zvs_rebalancing_plugin" filename="libgazebo_zvs_rebalancing_plugin.so">
+      <switching_frequency_hz>100000</switching_frequency_hz>
+      <max_transfer_current_a>2.50</max_transfer_current_a>
+      <soft_switching_efficiency>0.9802</soft_switching_efficiency>
+      <dead_time_ns>25</dead_time_ns>
+    </plugin>
   </model>
 </sdf>
