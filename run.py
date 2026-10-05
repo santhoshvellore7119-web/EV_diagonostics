@@ -132,7 +132,7 @@ def run_verification():
         ("Firmware Source File Structure Validation", [sys.executable, "-m", "pytest", "tests/test_main.py", "-v"]),
         ("Multi-Modal Simulation Physics Tests", [sys.executable, "-m", "pytest", "ev_cell_multimodal_sim/tests/test_simulation.py", "-v"]),
         ("Simulation Integration & SOH Tests", [sys.executable, "-m", "pytest", "ev_cell_multimodal_sim/tests/test_integration.py", "-v"]),
-        ("3D Physics Simulation Unit Tests", [sys.executable, "-m", "pytest", "simulation_3d_demo/test_simulation.py", "-v"]),
+        ("3D Physics Simulation Unit Tests", [sys.executable, "-m", "pytest", "simulation_3d_demo/test_3d_simulation.py", "-v"]),
         ("Hardware HIL Standalone Engine", [sys.executable, "hardware/run_hardware_hil.py", "--duration", "1.0", "--rate", "10.0"]),
         ("Gazebo Multi-Physics Bridge", [sys.executable, "gazebo/run_gazebo_sim.py", "--mode", "bridge", "--duration", "1.0", "--rate", "10.0"]),
         ("MATLAB/Simulink Digital Twin", [sys.executable, "matlab_simulink_demo/run_matlab_demo.py", "--mode", "auto", "--duration", "2.0"]),

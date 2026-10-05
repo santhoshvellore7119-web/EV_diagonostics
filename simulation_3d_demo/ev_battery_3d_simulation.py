@@ -704,7 +704,7 @@ class EVBattery3DSimulator:
         # Add pulse label
         self.ax_3d.text(base_x, base_y, base_z + pulse_height/2 + 0.003,
                        'Excitation', fontsize=7, ha='center', va='bottom',
-                       color='black', rotation=90)
+                       color='black')
 
     def update_status_display(self):
         """Update the status display text"""

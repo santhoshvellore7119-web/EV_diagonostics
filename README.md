@@ -5,8 +5,8 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688.svg)](https://fastapi.tiangolo.com/)
 [![React 18](https://img.shields.io/badge/React-18-61dafb.svg)](https://reactjs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Verification](https://img.shields.io/badge/Verification-18%2F18%20Suites%20Passed-brightgreen.svg)](run.py)
-[![Pytest](https://img.shields.io/badge/Tests-44%2F44%20Passing-brightgreen.svg)](tests/)
+[![Verification](https://img.shields.io/badge/Verification-20%2F20%20Suites%20Passed-brightgreen.svg)](run.py)
+[![Pytest](https://img.shields.io/badge/Tests-78%2F78%20Passing-brightgreen.svg)](tests/)
 
 An end-to-end, production-grade diagnostic and closed-loop cell recovery platform for second-life Lithium-ion battery packs. The system fuses **high-frequency electrical impedance**, **10 MHz ultrasonic acoustic pulse-echo**, and **transient thermal telemetry** into a unified deep learning pipeline (`MultiBranchFusionNet`) with cross-modal attention, heteroscedastic uncertainty estimation, and autonomous active rebalancing.
 
@@ -18,12 +18,13 @@ An end-to-end, production-grade diagnostic and closed-loop cell recovery platfor
 | :--- | :--- | :--- |
 | **Held-Out Classification Accuracy** | **89.17%** (6-class degradation mode) | Trained on in-distribution $\text{SOC} \in [0.2, 0.8]$, evaluated on held-out $[0.05, 0.2) \cup (0.8, 0.95]$ |
 | **Held-Out SOH Regression** | **2.44% MAE**, **2.85% RMSE** | Calibrated heteroscedastic epistemic uncertainty ($\sigma_{\text{SOH}}$) |
-| **Live Simulator Diagnostic Accuracy** | **>65%** across 6 modes | Verified across streaming 3D physics, Gazebo, and Simulink engines |
+| **Active Rebalancing Efficiency** | **>92.4%** (>98.4% peak ZVS soft-switching) | Energy savings >89% vs passive dissipative bleed (`backend/efficiency_benchmark.py`) |
+| **Live Simulator Diagnostic Accuracy** | **>66.7%** across 6 modes | Verified across dense sweeps in 3D physics, Gazebo, and Simulink engines |
 | **Label Leakage Guarantee** | **Zero Label Leakage (100% Invariant)** | Waveform synthesis derived strictly from physical telemetry (`test_physics_no_label_leakage.py`) |
-| **Hardware BOM Cost** | **\$32.00 (Sensing)** / **\$51.35 (Rebalancing)** | Complete itemized component BOM in [`hardware/bom/bom.csv`](hardware/bom/bom.csv) |
+| **Hardware BOM Cost** | **\$38.75 Total Unit Production BOM** | Itemized BOM (< \$45 target) in [`hardware/bom/bom.csv`](hardware/bom/bom.csv) & [`docs/Hardware_Implementation_Guide.pdf`](docs/Hardware_Implementation_Guide.pdf) |
 | **Ultrasonic Timing Resolution** | **55 ps TDC7200 / 50 ps AD8302** | Hardware timing budget in [`docs/hardware_timing_budget_and_bom.md`](docs/hardware_timing_budget_and_bom.md) |
-| **Safety Interlocks** | **Autonomous Lockout ($I = 0\text{ A}$)** | Instantaneous hardware contactor isolation on thermal/short-circuit detection |
-| **Master Test Pass Rate** | **18/18 Verification Suites (44/44 Tests)** | Master verification via `python run.py verify` & `pytest tests/` |
+| **Safety Interlocks** | **Autonomous Lockout ($I = 0\text{ A}$)** | Instantaneous hardware contactor isolation (<50µs) on thermal/short-circuit detection |
+| **Master Test Pass Rate** | **20/20 Verification Suites (78/78 Tests)** | Master verification via `python run.py verify` & `pytest -v` |
 
 ---
 
@@ -202,16 +203,16 @@ docker compose up --build
 
 ---
 
-## Master Verification & Quality Assurance
+### Master Verification & Quality Assurance
 
-To execute the automated 18-suite master verification scorecard and the full pytest suite:
+To execute the automated 20-suite master verification scorecard and the full pytest suite:
 
 ```bash
-# Run Master Verification Scorecard (18 Suites)
+# Run Master Verification Scorecard (20 Suites)
 python run.py verify
 
-# Run Full Pytest Test Suite (44 Tests)
-pytest tests/ -v
+# Run Full Pytest Test Suite (78 Tests)
+pytest -v
 ```
 
 ### Verification Scorecard
@@ -236,12 +237,39 @@ Simulation Integration & SOH Tests               | [ PASS ]   | Verified
 Hardware HIL Standalone Engine                   | [ PASS ]   | Verified
 Gazebo Multi-Physics Bridge                      | [ PASS ]   | Verified
 MATLAB/Simulink Digital Twin                     | [ PASS ]   | Verified
+System Efficiency & Loss Benchmark               | [ PASS ]   | Verified
+Comprehensive MATLAB & Multi-Cell Tests          | [ PASS ]   | Verified
 Firmware Static Verification                     | [ PASS ]   | Verified
 ML Pipeline Smoke Test                           | [ PASS ]   | Verified
 3D Physics Telemetry Engine                      | [ PASS ]   | Verified
 Host Telemetry Ingestion Bridge                  | [ PASS ]   | Verified
 ===========================================================================
-[SUCCESS] All 18 verification suites passed with zero errors!
+[SUCCESS] All 20 verification suites passed with zero errors!
+```
+
+---
+
+## Hardware Implementation & Build Guide
+
+For physical hardware fabrication, transducer mounting, Zero-Voltage Switching (ZVS) flyback balancer tuning, and benchtop testing protocols, see:
+* **[Production Hardware Implementation Guide (PDF)](docs/Hardware_Implementation_Guide.pdf)**
+* **[Itemized Bill of Materials ($38.75 BOM)](hardware/bom/bom.csv)**
+* **[Hardware Schematics & Block Diagrams](hardware/schematics/block_diagram.txt)**
+* **[SPICE Simulation Netlists](hardware/spice/zvs_buck_boost.cir)**
+
+---
+
+## Citation & Reference
+
+If you use this work, codebase, or dataset in your research, please cite:
+
+```bibtex
+@article{vellore2026evdiag,
+  title={Low-Cost Multi-Modal Diagnostic and Active Cell-Rebalancing System for Second-Life EV Battery Packs},
+  author={Vellore, Santhosh},
+  journal={IEEE Transactions on Transportation Electrification},
+  year={2026}
+}
 ```
 
 ---
