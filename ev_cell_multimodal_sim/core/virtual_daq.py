@@ -4,7 +4,10 @@ Updated to include configurable sensor noise and dropout/models for fault inject
 """
 
 import numpy as np
-from config import params as P
+try:
+    from ev_cell_multimodal_sim.config import params as P
+except ImportError:
+    from config import params as P
 
 
 class VirtualDAQ:

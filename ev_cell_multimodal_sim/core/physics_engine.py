@@ -6,7 +6,10 @@ Updated to include a to_csv export function for cross-validation with MATLAB.
 
 import numpy as np
 import csv
-from config import params as P
+try:
+    from ev_cell_multimodal_sim.config import params as P
+except ImportError:
+    from config import params as P
 
 
 def simulate_ocv(soc):

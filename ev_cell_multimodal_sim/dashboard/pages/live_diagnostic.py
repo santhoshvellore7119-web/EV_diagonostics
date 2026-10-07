@@ -16,12 +16,20 @@ import time
 # Add the project root to the path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from core.physics_engine import simulate_cell_response, to_csv
-from core.virtual_daq import VirtualDAQ
-from models.fusion_net import MultiBranchFusionNet
-from control.decision_engine import DecisionEngine, SystemState
-from control.rebalancing_sim import RebalancingSimulator
-from config import params as P
+try:
+    from ev_cell_multimodal_sim.core.physics_engine import simulate_cell_response, to_csv
+    from ev_cell_multimodal_sim.core.virtual_daq import VirtualDAQ
+    from ev_cell_multimodal_sim.models.fusion_net import MultiBranchFusionNet
+    from ev_cell_multimodal_sim.control.decision_engine import DecisionEngine, SystemState
+    from ev_cell_multimodal_sim.control.rebalancing_sim import RebalancingSimulator
+    from ev_cell_multimodal_sim.config import params as P
+except ImportError:
+    from core.physics_engine import simulate_cell_response, to_csv
+    from core.virtual_daq import VirtualDAQ
+    from models.fusion_net import MultiBranchFusionNet
+    from control.decision_engine import DecisionEngine, SystemState
+    from control.rebalancing_sim import RebalancingSimulator
+    from config import params as P
 
 # Page configuration
 st.set_page_config(

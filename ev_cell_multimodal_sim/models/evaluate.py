@@ -12,9 +12,14 @@ from sklearn.metrics import classification_report, confusion_matrix, roc_auc_sco
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from core.cell_database import CellDatabase
-from models.fusion_net import MultiBranchFusionNet, BaselineFusionNet
-from config import params as P
+try:
+    from ev_cell_multimodal_sim.core.cell_database import CellDatabase
+    from ev_cell_multimodal_sim.models.fusion_net import MultiBranchFusionNet, BaselineFusionNet
+    from ev_cell_multimodal_sim.config import params as P
+except ImportError:
+    from core.cell_database import CellDatabase
+    from models.fusion_net import MultiBranchFusionNet, BaselineFusionNet
+    from config import params as P
 
 
 def evaluate_model(model_path, test_loader, device, return_uncertainty=False):

@@ -17,15 +17,26 @@ from plotly.subplots import make_subplots
 # Add the project root to the path so we can import our modules
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from core.physics_engine import simulate_cell_response
-from core.virtual_daq import VirtualDAQ
-from core.cell_database import CellDatabase
-from models.fusion_net import MultiBranchFusionNet
-from models.train import train_model
-from models.evaluate import evaluate_model
-from control.decision_engine import DecisionEngine
-from control.rebalancing_sim import RebalancingSimulator
-from config import params as P
+try:
+    from ev_cell_multimodal_sim.core.physics_engine import simulate_cell_response
+    from ev_cell_multimodal_sim.core.virtual_daq import VirtualDAQ
+    from ev_cell_multimodal_sim.core.cell_database import CellDatabase
+    from ev_cell_multimodal_sim.models.fusion_net import MultiBranchFusionNet
+    from ev_cell_multimodal_sim.models.train import train_model
+    from ev_cell_multimodal_sim.models.evaluate import evaluate_model
+    from ev_cell_multimodal_sim.control.decision_engine import DecisionEngine
+    from ev_cell_multimodal_sim.control.rebalancing_sim import RebalancingSimulator
+    from ev_cell_multimodal_sim.config import params as P
+except ImportError:
+    from core.physics_engine import simulate_cell_response
+    from core.virtual_daq import VirtualDAQ
+    from core.cell_database import CellDatabase
+    from models.fusion_net import MultiBranchFusionNet
+    from models.train import train_model
+    from models.evaluate import evaluate_model
+    from control.decision_engine import DecisionEngine
+    from control.rebalancing_sim import RebalancingSimulator
+    from config import params as P
 
 
 def main():

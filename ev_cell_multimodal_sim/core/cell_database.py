@@ -3,9 +3,14 @@ Synthetic cell batch generator with labeled degradation modes.
 """
 
 import numpy as np
-from config import params as P
-from core.physics_engine import simulate_cell_response
-from core.virtual_daq import VirtualDAQ
+try:
+    from ev_cell_multimodal_sim.config import params as P
+    from ev_cell_multimodal_sim.core.physics_engine import simulate_cell_response
+    from ev_cell_multimodal_sim.core.virtual_daq import VirtualDAQ
+except ImportError:
+    from config import params as P
+    from core.physics_engine import simulate_cell_response
+    from core.virtual_daq import VirtualDAQ
 
 
 class CellDatabase:

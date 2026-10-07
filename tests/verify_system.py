@@ -53,8 +53,11 @@ def check_python_task():
         print("  PASS: All Python simulation files present")
         # Try to import and test fusion network
         try:
-            sys.path.insert(0, os.path.join(PROJECT_ROOT, "ev_cell_multimodal_sim"))
-            from models.fusion_net import MultiBranchFusionNet
+            try:
+                from ev_cell_multimodal_sim.models.fusion_net import MultiBranchFusionNet
+            except ImportError:
+                sys.path.insert(0, os.path.join(PROJECT_ROOT, "ev_cell_multimodal_sim"))
+                from models.fusion_net import MultiBranchFusionNet
             import torch
             model = MultiBranchFusionNet(seq_length=10)
             print("  PASS: Fusion network imports and instantiates")
