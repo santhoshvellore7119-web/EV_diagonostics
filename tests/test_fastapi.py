@@ -57,3 +57,28 @@ def test_mode_management(client):
     set_res = client.post("/api/mode/set?mode=3d")
     assert set_res.status_code == 200
     assert set_res.json()["mode"] == "3d"
+
+
+def test_gazebo_endpoints(client):
+    """Test Gazebo viewer HTML delivery and open redirect API."""
+    res_page = client.get("/gazebo")
+    assert res_page.status_code == 200
+    assert "Diagnostic Machine" in res_page.text or "3D Studio" in res_page.text
+
+    res_api = client.get("/api/gazebo/open")
+    assert res_api.status_code == 200
+    data = res_api.json()
+    assert data["status"] == "success"
+    assert data["url"] == "/gazebo"
+
+
+def test_simulink_open_endpoint(client):
+    """Test MATLAB Simulink open launcher endpoint."""
+    res = client.post("/api/simulink/open")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "success"
+    assert "ev_cell_digital_twin" in data["model_name"]
+    assert "launch_script" in data
+    assert "matlab_command" in data
+

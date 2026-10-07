@@ -1,118 +1,644 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useSelector } from 'react-redux';
 import { RootState } from '../../store';
-
-interface Point3D {
-  x: number;
-  y: number;
-  z: number;
-}
-
-interface Point2D {
-  x: number;
-  y: number;
-  depth: number;
-}
+import * as THREE from 'three';
 
 type RenderMode = 'realistic' | 'thermal' | 'acoustic' | 'xray' | 'cutaway';
-type SceneMode = 'single_cell' | 'pack_module';
-type ColormapType = 'thermal' | 'turbo' | 'inferno' | 'viridis';
+type CellFormat = '18650_cylindrical' | '21700_cylindrical' | 'prismatic_100ah' | 'pouch_60ah';
+
+interface ComponentInfo {
+  id: string;
+  name: string;
+  icon: string;
+  role: string;
+  principle: string;
+  specs: string;
+  liveReading: string;
+}
+
+const COMPONENT_DETAILS: Record<string, ComponentInfo> = {
+  clamping_actuator: {
+    id: 'clamping_actuator',
+    name: 'Robotic Pneumatic Clamping Gantry',
+    icon: '🦾',
+    role: 'Precision Mechanical Fixturing & Normal Force Regulation',
+    principle: 'Dual linear ball-screw actuators apply a calibrated normal force (120 N to 450 N) ensuring zero acoustic air gaps and constant contact resistance under thermal expansion.',
+    specs: 'Stroke: 150 mm | Force Range: 50–600 N | Repeatability: ±5 µm | Force Sensor: Piezo-resistive load cell',
+    liveReading: 'Clamping Force: 120.0 N | Gantry Status: LOCKED & STABLE'
+  },
+  kelvin_probes: {
+    id: 'kelvin_probes',
+    name: '4-Wire Kelvin Gold-Plated Current Probes',
+    icon: '⚡',
+    role: 'True DC Resistance & Electrochemical Impedance Acquisition',
+    principle: 'Separates current injection (Force lines) from voltage measurement (Sense lines) to eliminate lead and contact resistance, resolving sub-milliohm DC internal resistance (R0).',
+    specs: 'Plating: Hard Gold over Nickel | Contact R: < 0.5 mΩ | Current Rating: 30 A continuous / 100 A pulse | Spring Force: 3.5 N/pin',
+    liveReading: 'Sense Voltage: 3.650 V | Loop Current: 1.50 A | Contact Resistance: 0.22 mΩ'
+  },
+  ultrasonic_horns: {
+    id: 'ultrasonic_horns',
+    name: 'Dual 10 MHz PZT Ultrasonic Horns (Tx & Rx)',
+    icon: '🔊',
+    role: 'Multi-Layer Structural & State-of-Charge Acoustic Pulse-Echo',
+    principle: 'Transmits 10 MHz longitudinal acoustic waves through the battery core. Time-of-Flight (ToF) tracks modulus/SoC changes, while defect reflections detect lithium dendrites and gas delamination.',
+    specs: 'Frequency: 10.0 MHz | Transducer: Lead Zirconate Titanate (PZT-5A) | Wedge: Rexolite delay line | ToF Precision: 55 ps (TDC7200)',
+    liveReading: 'Time-of-Flight: 8.01 µs | Velocity: 2498 m/s | Coupling SNR: 32.4 dB'
+  },
+  liquid_coldplate: {
+    id: 'liquid_coldplate',
+    name: 'Microchannel Liquid Cold-Plate & Peltier Sink',
+    icon: '❄',
+    role: 'Active Isothermal Heat Sink & Thermal Wave Telemetry',
+    principle: 'Copper-aluminum microchannels circulate dielectric coolant with an embedded Peltier heat pump to maintain isothermal boundary conditions (25.0 ± 0.2 °C) during high-rate testing.',
+    specs: 'Thermal Conductivity: 390 W/(m·K) | Heat Flux: Up to 45 W/cm² | Coolant: 50/50 Water-Glycol | Flow Rate: 1.8 L/min',
+    liveReading: 'Base Temp: 24.8 °C | Coolant Flow: 1.8 L/min | Heat Flux: 3.2 W'
+  },
+  zvs_rebalancer: {
+    id: 'zvs_rebalancer',
+    name: 'Zero-Voltage-Switching (ZVS) Active Rebalancer',
+    icon: '🔄',
+    role: 'Non-Dissipative Bidirectional Resonant Charge Shuttling',
+    principle: 'Utilizes a GaN-based resonant quasi-ZVS converter to shuttle charge from high-SoC cells to weaker cells with zero switching loss, achieving ≥92.4% efficiency without resistive bleed heat.',
+    specs: 'Topology: Resonant Switched Capacitor | Switching Freq: 250 kHz | Peak Current: 3.0 A | Efficiency: ≥92.4% | Control: CAN / PWM',
+    liveReading: 'Stage: ACTIVE RESONANT | Transfer Current: 2.0 A | Efficiency: 92.4% | Energy Saved: 89.2%'
+  },
+  cell_core: {
+    id: 'cell_core',
+    name: 'Battery Core & Multi-Layer Microstructure',
+    icon: '🔋',
+    role: 'Electrochemical Energy Storage Unit Under Test',
+    principle: 'Cathode (NMC622/811), polyolefin microporous separator, and graphite anode. Acoustic and electrical impedance variations reveal degradation modes (Li plating, gas voids, loss of active material).',
+    specs: 'Nominal Voltage: 3.65 V | Chemistry: LiNiMnCoO2 (NMC) / Graphite | Acoustic Z: 1.85 MRayl (separator)',
+    liveReading: 'SoC: 50.0% | SoH: 91.2% | Deg Mode: HEALTHY | Layer Status: INTACT'
+  }
+};
 
 const ThreeDView: React.FC = () => {
   const frame = useSelector((state: RootState) => state.diagnosticFrame.frame);
-  const mode = useSelector((state: RootState) => state.mode.current);
-  
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const oscCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
+  const frameRef = useRef(frame);
+  useEffect(() => {
+    frameRef.current = frame;
+  }, [frame]);
 
-  // Camera & Interaction State
-  const [pitch, setPitch] = useState<number>(0.35);
-  const [yaw, setYaw] = useState<number>(0.78);
-  const [zoom, setZoom] = useState<number>(1.0);
-  const [autoRotate, setAutoRotate] = useState<boolean>(true);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const oscCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // Three.js instances
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const animFrameIdRef = useRef<number | null>(null);
+
+  // Dynamic 3D Objects
+  const cellGroupRef = useRef<THREE.Group | null>(null);
+  const gantryPistonRef = useRef<THREE.Group | null>(null);
+  const waveMeshRef = useRef<THREE.Mesh | null>(null);
+  const arcLinesRef = useRef<THREE.Line | null>(null);
+  const coolantParticlesRef = useRef<THREE.Points | null>(null);
+
+  // Camera Spherical Orbit State
+  const sphericalRef = useRef<{ radius: number; phi: number; theta: number }>({
+    radius: 42,
+    phi: Math.PI / 3,
+    theta: 0.8
+  });
+  const targetRef = useRef<THREE.Vector3>(new THREE.Vector3(0, 6, 0));
+  const isDraggingRef = useRef<boolean>(false);
+  const prevMouseRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  // UI & Controller State
+  const [selectedFormat, setSelectedFormat] = useState<CellFormat>('18650_cylindrical');
+  const selectedFormatRef = useRef(selectedFormat);
+  useEffect(() => {
+    selectedFormatRef.current = selectedFormat;
+  }, [selectedFormat]);
+
   const [renderMode, setRenderMode] = useState<RenderMode>('realistic');
-  const [sceneMode, setSceneMode] = useState<SceneMode>('single_cell');
-  const [colormap, setColormap] = useState<ColormapType>('thermal');
   const [showWireframe, setShowWireframe] = useState<boolean>(false);
   const [showOscilloscope, setShowOscilloscope] = useState<boolean>(true);
-  const [isDragging, setIsDragging] = useState<boolean>(false);
-  const [dragStart, setDragStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [activeComponent, setActiveComponent] = useState<ComponentInfo | null>(COMPONENT_DETAILS.clamping_actuator);
+  const [cycleStage, setCycleStage] = useState<string>('IDLE');
+  const [cycleProgress, setCycleProgress] = useState<number>(0);
+  const [isCycleRunning, setIsCycleRunning] = useState<boolean>(false);
+  
+  const [autoRotate, setAutoRotate] = useState<boolean>(true);
+  const autoRotateRef = useRef(autoRotate);
+  useEffect(() => {
+    autoRotateRef.current = autoRotate;
+  }, [autoRotate]);
 
-  // Animation pulse phase & particle state
-  const wavePhaseRef = useRef<number>(0);
-  const particlePhaseRef = useRef<number>(0);
+  const updateCameraPosition = useCallback(() => {
+    if (!cameraRef.current) return;
+    const s = sphericalRef.current;
+    cameraRef.current.position.set(
+      targetRef.current.x + s.radius * Math.sin(s.phi) * Math.sin(s.theta),
+      targetRef.current.y + s.radius * Math.cos(s.phi),
+      targetRef.current.z + s.radius * Math.sin(s.phi) * Math.cos(s.theta)
+    );
+    cameraRef.current.lookAt(targetRef.current);
+  }, []);
 
-  // 3D Projection Matrix math
-  const project = useCallback((p: Point3D, width: number, height: number, panX: number = 0, panY: number = 0): Point2D => {
-    // 1. Rotate around Y (yaw)
-    const cosY = Math.cos(yaw);
-    const sinY = Math.sin(yaw);
-    const x1 = p.x * cosY + p.z * sinY;
-    const y1 = p.y;
-    const z1 = -p.x * sinY + p.z * cosY;
+  // 1. Initialize High-End 3D WebGL Scene ONCE on mount
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
 
-    // 2. Rotate around X (pitch)
-    const cosP = Math.cos(pitch);
-    const sinP = Math.sin(pitch);
-    const x2 = x1;
-    const y2 = y1 * cosP - z1 * sinP;
-    const z2 = y1 * sinP + z1 * cosP;
+    const width = container.clientWidth || 920;
+    const height = container.clientHeight || 560;
 
-    // 3. Perspective Projection
-    const fov = 420 * zoom;
-    const cameraDist = 320;
-    const depth = z2 + cameraDist;
-    const scale = depth > 10 ? fov / depth : 1;
+    // Create Scene, Camera, Renderer
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x070a13);
+    scene.fog = new THREE.FogExp2(0x070a13, 0.008);
+    sceneRef.current = scene;
 
-    return {
-      x: width / 2 + panX + x2 * scale,
-      y: height / 2 + panY - y2 * scale,
-      depth: z2
-    };
-  }, [pitch, yaw, zoom]);
+    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
+    cameraRef.current = camera;
+    updateCameraPosition();
 
-  // Colormap generator (Thermal, Turbo, Inferno, Viridis)
-  const getColor = useCallback((tempC: number, alpha: number = 1.0): string => {
-    const tNorm = Math.max(0, Math.min(1, (tempC - 20.0) / 35.0));
-    let r = 0, g = 0, b = 0;
-
-    if (colormap === 'turbo') {
-      r = Math.floor(Math.sin(tNorm * Math.PI * 1.5) * 127 + 128);
-      g = Math.floor(Math.sin(tNorm * Math.PI) * 255);
-      b = Math.floor(Math.cos(tNorm * Math.PI * 1.5) * 127 + 128);
-    } else if (colormap === 'inferno') {
-      r = Math.floor(Math.min(255, tNorm * 300));
-      g = Math.floor(Math.max(0, (tNorm - 0.3) * 350));
-      b = Math.floor(Math.max(0, 180 - tNorm * 180));
-    } else if (colormap === 'viridis') {
-      r = Math.floor(68 + tNorm * 185);
-      g = Math.floor(1 + tNorm * 230);
-      b = Math.floor(84 + (1 - tNorm) * 120);
-    } else {
-      // Thermal Cool-Warm
-      if (tNorm < 0.25) {
-        r = 0;
-        g = Math.floor(tNorm * 4 * 255);
-        b = 255;
-      } else if (tNorm < 0.5) {
-        r = 0;
-        g = 255;
-        b = Math.floor((1 - (tNorm - 0.25) * 4) * 255);
-      } else if (tNorm < 0.75) {
-        r = Math.floor((tNorm - 0.5) * 4 * 255);
-        g = 255;
-        b = 0;
-      } else {
-        r = 255;
-        g = Math.floor((1 - (tNorm - 0.75) * 4) * 200);
-        b = Math.floor((tNorm - 0.75) * 4 * 180);
-      }
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+    } catch (err) {
+      console.warn('WebGL context creation failed (likely headless test runner).', err);
+      return;
     }
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-  }, [colormap]);
 
-  // Render Oscilloscope waveform on secondary canvas
+    renderer.setClearColor(0x070a13, 1.0);
+    renderer.setSize(width, height);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    container.innerHTML = '';
+    container.appendChild(renderer.domElement);
+    rendererRef.current = renderer;
+
+    // --- Mouse Orbit Interaction Handlers ---
+    const domEl = renderer.domElement;
+    const onMouseDown = (e: MouseEvent) => {
+      isDraggingRef.current = true;
+      prevMouseRef.current = { x: e.clientX, y: e.clientY };
+    };
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      const dx = e.clientX - prevMouseRef.current.x;
+      const dy = e.clientY - prevMouseRef.current.y;
+      prevMouseRef.current = { x: e.clientX, y: e.clientY };
+
+      sphericalRef.current.theta -= dx * 0.008;
+      sphericalRef.current.phi = Math.max(0.1, Math.min(Math.PI / 2 + 0.08, sphericalRef.current.phi - dy * 0.008));
+      updateCameraPosition();
+    };
+
+    const onMouseUp = () => {
+      isDraggingRef.current = false;
+    };
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      sphericalRef.current.radius = Math.max(10, Math.min(80, sphericalRef.current.radius + e.deltaY * 0.04));
+      updateCameraPosition();
+    };
+
+    domEl.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    domEl.addEventListener('wheel', onWheel, { passive: false });
+
+    // --- Lighting Rig ---
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
+    scene.add(ambientLight);
+
+    const dirLight1 = new THREE.DirectionalLight(0x38bdf8, 1.2);
+    dirLight1.position.set(20, 40, 20);
+    dirLight1.castShadow = true;
+    scene.add(dirLight1);
+
+    const dirLight2 = new THREE.DirectionalLight(0x10b981, 0.6);
+    dirLight2.position.set(-20, 20, -20);
+    scene.add(dirLight2);
+
+    const pointLight = new THREE.PointLight(0x0284c7, 1.5, 30);
+    pointLight.position.set(0, 12, 10);
+    scene.add(pointLight);
+
+    // --- Base Optical Granite Bench & Grid ---
+    const benchGeo = new THREE.BoxGeometry(32, 2, 24);
+    const benchMat = new THREE.MeshStandardMaterial({
+      color: 0x0f172a,
+      roughness: 0.3,
+      metalness: 0.8
+    });
+    const bench = new THREE.Mesh(benchGeo, benchMat);
+    bench.position.set(0, -1, 0);
+    bench.receiveShadow = true;
+    scene.add(bench);
+
+    const grid = new THREE.GridHelper(30, 30, 0x0284c7, 0x1e293b);
+    grid.position.set(0, 0.02, 0);
+    scene.add(grid);
+
+    // --- Machine Structural Frame & Vertical Linear Columns ---
+    const colGeo = new THREE.CylinderGeometry(0.4, 0.4, 26, 16);
+    const colMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.9, roughness: 0.2 });
+
+    const col1 = new THREE.Mesh(colGeo, colMat);
+    col1.position.set(-9, 13, -7);
+    scene.add(col1);
+
+    const col2 = new THREE.Mesh(colGeo, colMat);
+    col2.position.set(9, 13, -7);
+    scene.add(col2);
+
+    // Top Cross-Beam Gantry
+    const beamGeo = new THREE.BoxGeometry(20, 1.8, 4);
+    const beamMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.7, roughness: 0.4 });
+    const beam = new THREE.Mesh(beamGeo, beamMat);
+    beam.position.set(0, 26, -7);
+    scene.add(beam);
+
+    // Safety Stack Light Tower
+    const towerGeo = new THREE.CylinderGeometry(0.35, 0.35, 3.5, 16);
+    const towerMat = new THREE.MeshStandardMaterial({
+      color: 0x10b981,
+      emissive: 0x10b981,
+      emissiveIntensity: 0.8
+    });
+    const tower = new THREE.Mesh(towerGeo, towerMat);
+    tower.position.set(8.5, 29, -7);
+    scene.add(tower);
+
+    // --- Motorized Vertical Clamping Gantry (Piston) ---
+    const gantryGroup = new THREE.Group();
+    gantryGroup.position.set(0, 14, 0);
+
+    const pistonCylinder = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.8, 0.8, 6, 24),
+      new THREE.MeshStandardMaterial({ color: 0x64748b, metalness: 0.85, roughness: 0.2 })
+    );
+    pistonCylinder.position.set(0, 3, 0);
+    gantryGroup.add(pistonCylinder);
+
+    // Upper Kelvin Contact Head (Gold Plated)
+    const probeHead = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.4, 1.6, 1.2, 24),
+      new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.95, roughness: 0.1 })
+    );
+    probeHead.position.set(0, 0, 0);
+    gantryGroup.add(probeHead);
+
+    // Pogo-Pin Contacts
+    for (let i = -1; i <= 1; i += 2) {
+      const pin = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.12, 0.12, 0.8, 12),
+        new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 1.0, roughness: 0.1 })
+      );
+      pin.position.set(i * 0.45, -0.7, 0);
+      gantryGroup.add(pin);
+    }
+
+    scene.add(gantryGroup);
+    gantryPistonRef.current = gantryGroup;
+
+    // --- Lower Base Fixture & Microchannel Cold Plate ---
+    const coldPlateGeo = new THREE.BoxGeometry(10, 1.2, 10);
+    const coldPlateMat = new THREE.MeshStandardMaterial({
+      color: 0x0284c7,
+      metalness: 0.6,
+      roughness: 0.3
+    });
+    const coldPlate = new THREE.Mesh(coldPlateGeo, coldPlateMat);
+    coldPlate.position.set(0, 0.6, 0);
+    scene.add(coldPlate);
+
+    // Lower Negative Kelvin Contact
+    const negContact = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.6, 1.8, 0.6, 24),
+      new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.9, roughness: 0.15 })
+    );
+    negContact.position.set(0, 1.3, 0);
+    scene.add(negContact);
+
+    // --- Coolant Tubes with Flow Particles ---
+    const particleCount = 40;
+    const particleGeo = new THREE.BufferGeometry();
+    const particlePos = new Float32Array(particleCount * 3);
+    for (let i = 0; i < particleCount; i++) {
+      particlePos[i * 3] = (Math.random() - 0.5) * 8;
+      particlePos[i * 3 + 1] = 0.6;
+      particlePos[i * 3 + 2] = (Math.random() - 0.5) * 8;
+    }
+    particleGeo.setAttribute('position', new THREE.BufferAttribute(particlePos, 3));
+    const particleMat = new THREE.PointsMaterial({
+      color: 0x38bdf8,
+      size: 0.3,
+      transparent: true,
+      opacity: 0.85
+    });
+    const coolantPoints = new THREE.Points(particleGeo, particleMat);
+    scene.add(coolantPoints);
+    coolantParticlesRef.current = coolantPoints;
+
+    // --- Dual Lateral Ultrasonic Acoustic Transducer Horns ---
+    const txGroup = new THREE.Group();
+    txGroup.position.set(-5.5, 6, 0);
+    const hornGeo = new THREE.ConeGeometry(0.9, 2.5, 16);
+    hornGeo.rotateZ(Math.PI / 2);
+    const hornMat = new THREE.MeshStandardMaterial({ color: 0x06b6d4, metalness: 0.8, roughness: 0.25 });
+    const txHorn = new THREE.Mesh(hornGeo, hornMat);
+    txGroup.add(txHorn);
+    scene.add(txGroup);
+
+    const rxGroup = new THREE.Group();
+    rxGroup.position.set(5.5, 6, 0);
+    const rxHornGeo = new THREE.ConeGeometry(0.9, 2.5, 16);
+    rxHornGeo.rotateZ(-Math.PI / 2);
+    const rxHorn = new THREE.Mesh(rxHornGeo, hornMat);
+    rxGroup.add(rxHorn);
+    scene.add(rxGroup);
+
+    // Concentric Ultrasonic Wavefront Mesh (Volumetric Acoustic Ring)
+    const waveGeo = new THREE.TorusGeometry(2.2, 0.12, 16, 64);
+    waveGeo.rotateY(Math.PI / 2);
+    const waveMat = new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      transparent: true,
+      opacity: 0.7,
+      wireframe: true
+    });
+    const waveMesh = new THREE.Mesh(waveGeo, waveMat);
+    waveMesh.position.set(0, 6, 0);
+    scene.add(waveMesh);
+    waveMeshRef.current = waveMesh;
+
+    // --- ZVS Active Rebalancer Inverter PCB Board ---
+    const pcbGroup = new THREE.Group();
+    pcbGroup.position.set(-11, 4, 3);
+    const pcbBase = new THREE.Mesh(
+      new THREE.BoxGeometry(4.5, 6, 0.4),
+      new THREE.MeshStandardMaterial({ color: 0x064e3b, metalness: 0.3, roughness: 0.7 })
+    );
+    pcbGroup.add(pcbBase);
+
+    // Planar Inductors
+    const indGeo = new THREE.CylinderGeometry(0.7, 0.7, 0.8, 16);
+    const indMat = new THREE.MeshStandardMaterial({ color: 0xb45309, metalness: 0.7, roughness: 0.3 });
+    const ind1 = new THREE.Mesh(indGeo, indMat);
+    ind1.position.set(-1, 1.2, 0.5);
+    pcbGroup.add(ind1);
+    const ind2 = new THREE.Mesh(indGeo, indMat);
+    ind2.position.set(1, 1.2, 0.5);
+    pcbGroup.add(ind2);
+
+    scene.add(pcbGroup);
+
+    // Active Rebalancing Energy Laser Arcs (Line geometry)
+    const arcMat = new THREE.LineBasicMaterial({ color: 0x10b981, linewidth: 2, transparent: true, opacity: 0.9 });
+    const arcGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(-11, 4, 3),
+      new THREE.Vector3(0, 7, 0)
+    ]);
+    const arcLine = new THREE.Line(arcGeo, arcMat);
+    scene.add(arcLine);
+    arcLinesRef.current = arcLine;
+
+    // --- Battery Cell Model Holder Group ---
+    const cellGroup = new THREE.Group();
+    scene.add(cellGroup);
+    cellGroupRef.current = cellGroup;
+
+    // Animation Loop
+    let clock = new THREE.Clock();
+    const animate = () => {
+      animFrameIdRef.current = requestAnimationFrame(animate);
+      try {
+        const delta = Math.min(clock.getDelta(), 0.1);
+        const elapsed = clock.getElapsedTime();
+
+        if (autoRotateRef.current && !isDraggingRef.current) {
+          sphericalRef.current.theta += 0.005;
+          updateCameraPosition();
+        }
+
+        // 1. Acoustic Wave Pulsing
+        if (waveMeshRef.current) {
+          const waveScale = (elapsed * 2.5) % 3.0;
+          waveMeshRef.current.scale.set(1 + waveScale * 0.4, 1 + waveScale * 0.4, 1 + waveScale * 0.4);
+          (waveMeshRef.current.material as THREE.MeshBasicMaterial).opacity = Math.max(0.1, 1.0 - waveScale / 3.0);
+        }
+
+        // 2. Coolant Particle Flow
+        if (coolantParticlesRef.current) {
+          const positions = coolantParticlesRef.current.geometry.attributes.position.array as Float32Array;
+          for (let i = 0; i < particleCount; i++) {
+            positions[i * 3 + 2] += delta * 4.0;
+            if (positions[i * 3 + 2] > 4.5) positions[i * 3 + 2] = -4.5;
+          }
+          coolantParticlesRef.current.geometry.attributes.position.needsUpdate = true;
+        }
+
+        // 3. Dynamic Rebalancing Shuttling Arc
+        if (arcLinesRef.current) {
+          const currentFrame = frameRef.current;
+          const isRebalancing = currentFrame?.rebalancing_active || (currentFrame?.rebalancing_powerStage_actualCurrent && currentFrame.rebalancing_powerStage_actualCurrent > 0);
+          arcLinesRef.current.visible = !!isRebalancing;
+          if (isRebalancing) {
+            (arcLinesRef.current.material as THREE.LineBasicMaterial).opacity = 0.5 + 0.5 * Math.sin(elapsed * 15.0);
+          }
+        }
+
+        // 4. Clamping Piston Dynamic Stroke
+        if (gantryPistonRef.current) {
+          const fmt = selectedFormatRef.current;
+          const targetY = fmt === '18650_cylindrical' ? 10.5
+                        : fmt === '21700_cylindrical' ? 11.5
+                        : fmt === 'prismatic_100ah' ? 13.0
+                        : 9.5;
+          gantryPistonRef.current.position.y = THREE.MathUtils.lerp(gantryPistonRef.current.position.y, targetY, 0.1);
+        }
+
+        if (rendererRef.current && sceneRef.current && cameraRef.current) {
+          rendererRef.current.render(sceneRef.current, cameraRef.current);
+        }
+      } catch (err) {
+        console.warn('Animation loop caught:', err);
+      }
+    };
+
+    animate();
+
+    // Handle Window Resize
+    const handleResize = () => {
+      if (!containerRef.current || !rendererRef.current || !cameraRef.current) return;
+      const w = containerRef.current.clientWidth;
+      const h = containerRef.current.clientHeight;
+      cameraRef.current.aspect = w / h;
+      cameraRef.current.updateProjectionMatrix();
+      rendererRef.current.setSize(w, h);
+    };
+
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      domEl.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      domEl.removeEventListener('wheel', onWheel);
+      if (animFrameIdRef.current) cancelAnimationFrame(animFrameIdRef.current);
+      if (rendererRef.current && rendererRef.current.domElement) {
+        rendererRef.current.domElement.remove();
+        rendererRef.current.dispose();
+      }
+    };
+  }, [updateCameraPosition]);
+
+  // 2. Build Cell Geometry ONLY whenever Format, RenderMode, or Wireframe changes
+  useEffect(() => {
+    const cellGroup = cellGroupRef.current;
+    if (!cellGroup) return;
+
+    // Clear old cell meshes
+    while (cellGroup.children.length > 0) {
+      cellGroup.remove(cellGroup.children[0]);
+    }
+
+    const cellTemp = frameRef.current?.thermal_temperature || 25.0;
+
+    // Base Color calculation
+    let baseColor = 0x38bdf8;
+    if (renderMode === 'thermal') {
+      const tNorm = Math.max(0, Math.min(1, (cellTemp - 20) / 30));
+      baseColor = tNorm > 0.6 ? 0xef4444 : tNorm > 0.3 ? 0xf59e0b : 0x10b981;
+    } else if (renderMode === 'xray') {
+      baseColor = 0x818cf8;
+    }
+
+    const isTransparent = renderMode === 'xray' || renderMode === 'cutaway';
+    const cellMat = new THREE.MeshStandardMaterial({
+      color: baseColor,
+      metalness: renderMode === 'realistic' ? 0.8 : 0.2,
+      roughness: 0.3,
+      transparent: isTransparent,
+      opacity: renderMode === 'xray' ? 0.45 : renderMode === 'cutaway' ? 0.85 : 1.0,
+      wireframe: showWireframe
+    });
+
+    if (selectedFormat === '18650_cylindrical' || selectedFormat === '21700_cylindrical') {
+      const radius = selectedFormat === '18650_cylindrical' ? 1.8 : 2.2;
+      const height = selectedFormat === '18650_cylindrical' ? 8.5 : 9.8;
+
+      const cylinder = new THREE.Mesh(
+        new THREE.CylinderGeometry(radius, radius, height, 32, 1, renderMode === 'cutaway', 0, renderMode === 'cutaway' ? Math.PI * 1.4 : Math.PI * 2),
+        cellMat
+      );
+      cylinder.position.set(0, height / 2 + 1.5, 0);
+      cylinder.castShadow = true;
+      cellGroup.add(cylinder);
+
+      // Terminal Cap (Gold/Steel)
+      const cap = new THREE.Mesh(
+        new THREE.CylinderGeometry(radius * 0.5, radius * 0.5, 0.4, 24),
+        new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.9, roughness: 0.1 })
+      );
+      cap.position.set(0, height + 1.7, 0);
+      cellGroup.add(cap);
+
+      // Internal Spiral Jelly-Roll Microstructure (Visible in Cutaway/X-Ray)
+      if (renderMode === 'cutaway' || renderMode === 'xray') {
+        for (let j = 1; j <= 5; j++) {
+          const jrRadius = (radius * j) / 6.0;
+          const jrMesh = new THREE.Mesh(
+            new THREE.CylinderGeometry(jrRadius, jrRadius, height * 0.9, 24, 1, true),
+            new THREE.MeshBasicMaterial({
+              color: j % 2 === 0 ? 0x10b981 : 0xf59e0b,
+              wireframe: true,
+              transparent: true,
+              opacity: 0.7
+            })
+          );
+          jrMesh.position.set(0, height / 2 + 1.5, 0);
+          cellGroup.add(jrMesh);
+        }
+      }
+    } else if (selectedFormat === 'prismatic_100ah') {
+      const width = 7.5;
+      const height = 10.5;
+      const depth = 3.8;
+
+      const prism = new THREE.Mesh(
+        new THREE.BoxGeometry(width, height, depth),
+        cellMat
+      );
+      prism.position.set(0, height / 2 + 1.5, 0);
+      prism.castShadow = true;
+      cellGroup.add(prism);
+
+      // Prismatic Dual Terminals & Burst Safety Vent
+      const termPos = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.6, 0.6, 0.8, 16),
+        new THREE.MeshStandardMaterial({ color: 0xef4444, metalness: 0.9 })
+      );
+      termPos.position.set(-2.2, height + 1.8, 0);
+      cellGroup.add(termPos);
+
+      const termNeg = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.6, 0.6, 0.8, 16),
+        new THREE.MeshStandardMaterial({ color: 0x0284c7, metalness: 0.9 })
+      );
+      termNeg.position.set(2.2, height + 1.8, 0);
+      cellGroup.add(termNeg);
+
+      const vent = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.4, 0.4, 0.1, 16),
+        new THREE.MeshStandardMaterial({ color: 0x64748b })
+      );
+      vent.position.set(0, height + 1.55, 0);
+      cellGroup.add(vent);
+
+      // Internal Stacked Electrode Sheets
+      if (renderMode === 'cutaway' || renderMode === 'xray') {
+        for (let l = 0; l < 8; l++) {
+          const layerMesh = new THREE.Mesh(
+            new THREE.BoxGeometry(width * 0.85, 0.1, depth * 0.85),
+            new THREE.MeshBasicMaterial({ color: l % 2 === 0 ? 0x34d399 : 0xf59e0b, opacity: 0.8, transparent: true })
+          );
+          layerMesh.position.set(0, 2.5 + l * 1.1, 0);
+          cellGroup.add(layerMesh);
+        }
+      }
+    } else {
+      // Pouch Cell Format
+      const width = 6.0;
+      const height = 7.5;
+      const depth = 1.2;
+
+      const pouch = new THREE.Mesh(
+        new THREE.BoxGeometry(width, height, depth),
+        cellMat
+      );
+      pouch.position.set(0, height / 2 + 1.5, 0);
+      cellGroup.add(pouch);
+
+      // Foil Tabs
+      const tabPos = new THREE.Mesh(
+        new THREE.BoxGeometry(1.2, 1.2, 0.05),
+        new THREE.MeshStandardMaterial({ color: 0xef4444, metalness: 0.9 })
+      );
+      tabPos.position.set(-1.6, height + 2.0, 0);
+      cellGroup.add(tabPos);
+
+      const tabNeg = new THREE.Mesh(
+        new THREE.BoxGeometry(1.2, 1.2, 0.05),
+        new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.9 })
+      );
+      tabNeg.position.set(1.6, height + 2.0, 0);
+      cellGroup.add(tabNeg);
+    }
+  }, [selectedFormat, renderMode, showWireframe]);
+
+  // 3. Render 10 MHz RF Ultrasonic Oscilloscope on 2D Overlay Canvas
   const renderOscilloscope = useCallback(() => {
     const canvas = oscCanvasRef.current;
     if (!canvas) return;
@@ -121,69 +647,81 @@ const ThreeDView: React.FC = () => {
 
     const w = canvas.width;
     const h = canvas.height;
-    ctx.clearRect(0, 0, w, h);
 
-    // Dark grid background
-    ctx.fillStyle = 'rgba(10, 15, 26, 0.92)';
+    // Clear background
+    ctx.fillStyle = '#020617';
     ctx.fillRect(0, 0, w, h);
 
-    // Reticle Grid
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.15)';
+    // Draw Oscilloscope Grid
+    ctx.strokeStyle = '#0f172a';
     ctx.lineWidth = 1;
-    for (let x = 0; x < w; x += 20) {
+    for (let x = 0; x < w; x += 25) {
       ctx.beginPath();
       ctx.moveTo(x, 0);
       ctx.lineTo(x, h);
       ctx.stroke();
     }
-    for (let y = 0; y < h; y += 15) {
+    for (let y = 0; y < h; y += 20) {
       ctx.beginPath();
       ctx.moveTo(0, y);
       ctx.lineTo(w, y);
       ctx.stroke();
     }
 
-    const tof = frame?.ultrasonic_timeOfFlight || 8.0;
-    const atten = frame?.ultrasonic_amplitude || 1.0;
-    const degMode = frame?.degradation_mode || 'healthy';
+    // Zero-crossing line
+    ctx.strokeStyle = '#334155';
+    ctx.beginPath();
+    ctx.moveTo(0, h / 2);
+    ctx.lineTo(w, h / 2);
+    ctx.stroke();
 
-    // Baseline excitation pulse & Echo pulse simulation
-    ctx.strokeStyle = degMode === 'gas_generation' ? '#ff00ff' : '#00ffff';
+    // Synthesize/Render A-Scan Trace based on current telemetry
+    const currentFrame = frameRef.current;
+    const tof = currentFrame?.ultrasonic_timeOfFlight || 8.0;
+    const atten = currentFrame?.ultrasonic_amplitude !== undefined ? currentFrame.ultrasonic_amplitude : 0.85;
+    const degMode = currentFrame?.degradation_mode || 'healthy';
+
     ctx.lineWidth = 1.5;
+    ctx.strokeStyle = degMode === 'gas_generation' ? '#ff00ff' : degMode === 'li_plating' ? '#f59e0b' : '#38bdf8';
     ctx.beginPath();
 
     const cy = h / 2;
-    const numPoints = w;
-    for (let x = 0; x < numPoints; x++) {
-      const t_us = (x / w) * 16.0; // 0 to 16 us window
-      
-      // Tx Excitation Spike at t = 0.5 us
+    for (let x = 0; x < w; x++) {
+      const t_us = (x / w) * 16.0; // 0 to 16 µs time window
       let yVal = 0;
-      if (t_us >= 0.2 && t_us <= 1.2) {
-        yVal += Math.sin((t_us - 0.2) * Math.PI * 8) * Math.exp(-(t_us - 0.2) * 4) * 35;
+
+      // Front-wall transmission echo
+      if (t_us >= 0.5 && t_us <= 2.5) {
+        const env = Math.exp(-Math.pow((t_us - 1.5) / 0.4, 2));
+        yVal += Math.sin((t_us - 1.5) * 20.0) * env * (h * 0.38);
       }
 
-      // Rx Echo Pulse centered at ToF
-      const dt = t_us - tof;
-      if (Math.abs(dt) < 2.5) {
+      // Defect internal scattering echoes
+      if (degMode === 'gas_generation' && t_us >= 3.5 && t_us <= 5.5) {
+        const envDef = Math.exp(-Math.pow((t_us - 4.5) / 0.5, 2)) * 0.7;
+        yVal += Math.sin((t_us - 4.5) * 25.0) * envDef * (h * 0.28);
+      } else if (degMode === 'li_plating' && t_us >= 2.8 && t_us <= 4.2) {
+        const envPlat = Math.exp(-Math.pow((t_us - 3.5) / 0.3, 2)) * 0.5;
+        yVal += Math.sin((t_us - 3.5) * 30.0) * envPlat * (h * 0.22);
+      }
+
+      // Back-wall structural reflection echo
+      if (t_us >= tof - 1.0 && t_us <= tof + 1.0) {
         const phase = degMode === 'li_plating' ? Math.PI : 0;
-        const envelope = Math.exp(-dt * dt * 2.0);
-        yVal += Math.sin(dt * Math.PI * 6 + phase) * envelope * 28 * atten;
+        const envBack = Math.exp(-Math.pow((t_us - tof) / 0.45, 2)) * atten;
+        yVal += Math.sin((t_us - tof) * 20.0 + phase) * envBack * (h * 0.35);
       }
 
-      // Add slight noise floor
       yVal += (Math.random() - 0.5) * 1.5;
-
       const py = cy - yVal;
       if (x === 0) ctx.moveTo(x, py);
       else ctx.lineTo(x, py);
     }
     ctx.stroke();
 
-    // ToF Indicator Marker Line
+    // ToF Marker Cursor
     const markerX = (tof / 16.0) * w;
-    ctx.strokeStyle = '#f59e0b';
-    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = '#eab308';
     ctx.setLineDash([3, 3]);
     ctx.beginPath();
     ctx.moveTo(markerX, 0);
@@ -191,516 +729,129 @@ const ThreeDView: React.FC = () => {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Text labels
     ctx.fillStyle = '#38bdf8';
-    ctx.font = '9px monospace';
-    ctx.fillText(`ToF: ${tof.toFixed(2)} µs`, markerX + 4, 12);
-    ctx.fillText(`Amp: ${(atten * 100).toFixed(0)}%`, 6, h - 6);
-  }, [frame]);
+    ctx.font = '10px monospace';
+    ctx.fillText(`ToF: ${tof.toFixed(2)} µs`, markerX + 4, 14);
+    ctx.fillText(`Amp: ${(atten * 100).toFixed(0)}%`, 8, h - 8);
+  }, []);
 
-  // Main Canvas Render Loop
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    renderOscilloscope();
+  }, [renderOscilloscope, frame]);
 
-    let localYaw = yaw;
+  // Automated 6-Stage Testing Cycle Handler
+  const handleStartCycle = async () => {
+    setIsCycleRunning(true);
+    const stages = [
+      'CLAMPING_ENGAGED',
+      'ACOUSTIC_COUPLING_CHECK',
+      'TRI_MODAL_PULSE_SCAN',
+      'AI_FUSION_INFERENCE',
+      'ACTIVE_REBALANCING_EXECUTION',
+      'HEALTH_CERTIFICATION'
+    ];
 
-    const render = () => {
-      if (autoRotate && !isDragging) {
-        localYaw += 0.005;
-        setYaw(localYaw);
+    for (let i = 0; i < stages.length; i++) {
+      setCycleStage(stages[i]);
+      for (let p = 0; p <= 100; p += 25) {
+        setCycleProgress(p);
+        await new Promise((r) => setTimeout(r, 200));
       }
-      wavePhaseRef.current = (wavePhaseRef.current + 0.05) % (Math.PI * 2);
-      particlePhaseRef.current = (particlePhaseRef.current + 0.03) % 1.0;
-
-      const width = canvas.width;
-      const height = canvas.height;
-      ctx.clearRect(0, 0, width, height);
-
-      // Deep space workstation gradient
-      const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
-      bgGrad.addColorStop(0, '#070b12');
-      bgGrad.addColorStop(0.5, '#0d1527');
-      bgGrad.addColorStop(1, '#131f38');
-      ctx.fillStyle = bgGrad;
-      ctx.fillRect(0, 0, width, height);
-
-      // High-precision Grid Floor
-      ctx.strokeStyle = 'rgba(56, 189, 248, 0.12)';
-      ctx.lineWidth = 1;
-      const gridSize = 180;
-      const gridSteps = 9;
-      for (let i = -gridSteps; i <= gridSteps; i++) {
-        const p1 = project({ x: (i * gridSize) / gridSteps, y: -90, z: -gridSize }, width, height);
-        const p2 = project({ x: (i * gridSize) / gridSteps, y: -90, z: gridSize }, width, height);
-        ctx.beginPath();
-        ctx.moveTo(p1.x, p1.y);
-        ctx.lineTo(p2.x, p2.y);
-        ctx.stroke();
-
-        const p3 = project({ x: -gridSize, y: -90, z: (i * gridSize) / gridSteps }, width, height);
-        const p4 = project({ x: gridSize, y: -90, z: (i * gridSize) / gridSteps }, width, height);
-        ctx.beginPath();
-        ctx.moveTo(p3.x, p3.y);
-        ctx.lineTo(p4.x, p4.y);
-        ctx.stroke();
-      }
-
-      const degMode = frame?.degradation_mode || 'healthy';
-      const cellTemp = frame?.thermal_temperature || 25.0;
-
-      // Single Cell or 4S Pack Module Rendering
-      const cellOffsets = sceneMode === 'single_cell' 
-        ? [{ x: 0, z: 0, id: 'CELL-01', temp: cellTemp, soc: frame?.simulation_soc || 0.5 }]
-        : [
-            { x: -90, z: -20, id: 'CELL-1', temp: cellTemp + 1.2, soc: 0.85 },
-            { x: -30, z: 0,   id: 'CELL-2', temp: cellTemp, soc: 0.65 },
-            { x: 30,  z: 0,   id: 'CELL-3', temp: cellTemp - 0.8, soc: 0.42 },
-            { x: 90,  z: -20, id: 'CELL-4', temp: cellTemp + 3.5, soc: 0.28 }
-          ];
-
-      const cellRadius = sceneMode === 'single_cell' ? 44 : 24;
-      const cellHeight = sceneMode === 'single_cell' ? 140 : 80;
-      const numSegments = sceneMode === 'single_cell' ? 32 : 18;
-      const numRings = sceneMode === 'single_cell' ? 12 : 6;
-
-      // Draw Cells
-      cellOffsets.forEach((cOffset, cellIdx) => {
-        // Render Cylinder Mesh
-        for (let r = 0; r < numRings - 1; r++) {
-          const yTop = -cellHeight / 2 + (r * cellHeight) / (numRings - 1);
-          const yBot = -cellHeight / 2 + ((r + 1) * cellHeight) / (numRings - 1);
-
-          for (let s = 0; s < numSegments; s++) {
-            // Cutaway Mode: peel back quadrant 0..8
-            if (renderMode === 'cutaway' && s < numSegments / 3 && sceneMode === 'single_cell') {
-              continue; // Expose interior jellyroll
-            }
-
-            const a1 = (s * Math.PI * 2) / numSegments;
-            const a2 = ((s + 1) * Math.PI * 2) / numSegments;
-
-            let quadTemp = cOffset.temp;
-            if (degMode === 'internal_short' && cellIdx === 0) {
-              const isHotspot = Math.abs(s - numSegments / 4) < 4 && Math.abs(r - numRings / 2) < 3;
-              quadTemp = isHotspot ? cellTemp + 22.0 : cellTemp + 4.0;
-            } else if (degMode === 'li_plating') {
-              quadTemp = cOffset.temp + Math.sin(a1 * 2) * 1.8;
-            }
-
-            const p1 = project({ x: cOffset.x + cellRadius * Math.cos(a1), y: yTop, z: cOffset.z + cellRadius * Math.sin(a1) }, width, height);
-            const p2 = project({ x: cOffset.x + cellRadius * Math.cos(a2), y: yTop, z: cOffset.z + cellRadius * Math.sin(a2) }, width, height);
-            const p3 = project({ x: cOffset.x + cellRadius * Math.cos(a2), y: yBot, z: cOffset.z + cellRadius * Math.sin(a2) }, width, height);
-            const p4 = project({ x: cOffset.x + cellRadius * Math.cos(a1), y: yBot, z: cOffset.z + cellRadius * Math.sin(a1) }, width, height);
-
-            ctx.beginPath();
-            ctx.moveTo(p1.x, p1.y);
-            ctx.lineTo(p2.x, p2.y);
-            ctx.lineTo(p3.x, p3.y);
-            ctx.lineTo(p4.x, p4.y);
-            ctx.closePath();
-
-            if (renderMode === 'thermal') {
-              ctx.fillStyle = getColor(quadTemp, 0.85);
-              ctx.fill();
-            } else if (renderMode === 'xray') {
-              ctx.fillStyle = 'rgba(14, 165, 233, 0.15)';
-              ctx.fill();
-            } else if (renderMode === 'cutaway') {
-              const shade = Math.floor(140 + 70 * Math.cos(a1 - yaw));
-              ctx.fillStyle = `rgba(${shade - 15}, ${shade}, ${shade + 25}, 0.88)`;
-              ctx.fill();
-            } else {
-              // Realistic Metallic Shader with Specular Shading
-              const lightNorm = Math.cos(a1 - yaw);
-              const specular = Math.pow(Math.max(0, lightNorm), 4) * 60;
-              const shade = Math.min(255, Math.floor(120 + 80 * Math.max(0, lightNorm) + specular));
-              ctx.fillStyle = `rgba(${shade - 20}, ${shade}, ${shade + 30}, 0.92)`;
-              ctx.fill();
-            }
-
-            if (showWireframe || renderMode === 'xray') {
-              ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
-              ctx.lineWidth = 0.8;
-              ctx.stroke();
-            }
-          }
-        }
-
-        // Cutaway Interior Jellyroll layers (Anode, Separator, Cathode, Central Pin)
-        if (renderMode === 'cutaway' && sceneMode === 'single_cell') {
-          // Central Steel Mandrel Pin
-          const pinRad = 8;
-          for (let s = 0; s < 12; s++) {
-            const a1 = (s * Math.PI * 2) / 12;
-            const a2 = ((s + 1) * Math.PI * 2) / 12;
-            const pt1 = project({ x: pinRad * Math.cos(a1), y: cellHeight / 2, z: pinRad * Math.sin(a1) }, width, height);
-            const pt2 = project({ x: pinRad * Math.cos(a2), y: cellHeight / 2, z: pinRad * Math.sin(a2) }, width, height);
-            const pt3 = project({ x: pinRad * Math.cos(a2), y: -cellHeight / 2, z: pinRad * Math.sin(a2) }, width, height);
-            const pt4 = project({ x: pinRad * Math.cos(a1), y: -cellHeight / 2, z: pinRad * Math.sin(a1) }, width, height);
-            ctx.beginPath();
-            ctx.moveTo(pt1.x, pt1.y);
-            ctx.lineTo(pt2.x, pt2.y);
-            ctx.lineTo(pt3.x, pt3.y);
-            ctx.lineTo(pt4.x, pt4.y);
-            ctx.closePath();
-            ctx.fillStyle = '#64748b';
-            ctx.fill();
-          }
-
-          // Spiral Jellyroll Layers (Copper Anode Foil + NMC Cathode)
-          const numSpirals = 24;
-          for (let sp = 0; sp < numSpirals; sp++) {
-            const rSpiral = pinRad + (sp * (cellRadius - pinRad)) / numSpirals;
-            const ang = sp * 0.4 + wavePhaseRef.current * 0.2;
-            const pLayer = project({ x: rSpiral * Math.cos(ang), y: 0, z: rSpiral * Math.sin(ang) }, width, height);
-            ctx.beginPath();
-            ctx.arc(pLayer.x, pLayer.y, 2.5, 0, Math.PI * 2);
-            ctx.fillStyle = sp % 2 === 0 ? '#b45309' : '#0284c7'; // Copper vs Aluminum/NMC
-            ctx.fill();
-          }
-        }
-
-        // Positive Terminal Brass Cap
-        const capRadius = cellRadius * 0.45;
-        const capTop = cellHeight / 2 + (sceneMode === 'single_cell' ? 12 : 6);
-        ctx.beginPath();
-        for (let s = 0; s <= numSegments; s++) {
-          const a = (s * Math.PI * 2) / numSegments;
-          const pt = project({ x: cOffset.x + capRadius * Math.cos(a), y: capTop, z: cOffset.z + capRadius * Math.sin(a) }, width, height);
-          if (s === 0) ctx.moveTo(pt.x, pt.y);
-          else ctx.lineTo(pt.x, pt.y);
-        }
-        ctx.fillStyle = '#fbbf24';
-        ctx.fill();
-        ctx.strokeStyle = '#d97706';
-        ctx.stroke();
-
-        // Cell Label Tag
-        const tagPos = project({ x: cOffset.x, y: -cellHeight / 2 - 16, z: cOffset.z }, width, height);
-        ctx.fillStyle = '#94a3b8';
-        ctx.font = '10px monospace';
-        ctx.fillText(`${cOffset.id} (${(cOffset.soc * 100).toFixed(0)}%)`, tagPos.x - 22, tagPos.y);
-      });
-
-      // Nickel Busbars in Pack Mode
-      if (sceneMode === 'pack_module') {
-        ctx.strokeStyle = '#94a3b8';
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        const pBus1 = project({ x: cellOffsets[0].x, y: cellHeight / 2 + 6, z: cellOffsets[0].z }, width, height);
-        const pBus2 = project({ x: cellOffsets[1].x, y: cellHeight / 2 + 6, z: cellOffsets[1].z }, width, height);
-        const pBus3 = project({ x: cellOffsets[2].x, y: cellHeight / 2 + 6, z: cellOffsets[2].z }, width, height);
-        const pBus4 = project({ x: cellOffsets[3].x, y: cellHeight / 2 + 6, z: cellOffsets[3].z }, width, height);
-        ctx.moveTo(pBus1.x, pBus1.y);
-        ctx.lineTo(pBus2.x, pBus2.y);
-        ctx.lineTo(pBus3.x, pBus3.y);
-        ctx.lineTo(pBus4.x, pBus4.y);
-        ctx.stroke();
-
-        // Active Rebalancer Energy Shuttle Bezier Arcs (High SOC to Low SOC)
-        const pHigh = project({ x: cellOffsets[0].x, y: cellHeight / 2 + 15, z: cellOffsets[0].z }, width, height);
-        const pLow = project({ x: cellOffsets[3].x, y: cellHeight / 2 + 15, z: cellOffsets[3].z }, width, height);
-        const pMid = project({ x: 0, y: cellHeight / 2 + 65, z: 0 }, width, height);
-
-        ctx.strokeStyle = 'rgba(16, 185, 129, 0.75)';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(pHigh.x, pHigh.y);
-        ctx.quadraticCurveTo(pMid.x, pMid.y, pLow.x, pLow.y);
-        ctx.stroke();
-
-        // Animated Charge Energy Packet
-        const tP = particlePhaseRef.current;
-        const qx = (1 - tP) * (1 - tP) * pHigh.x + 2 * (1 - tP) * tP * pMid.x + tP * tP * pLow.x;
-        const qy = (1 - tP) * (1 - tP) * pHigh.y + 2 * (1 - tP) * tP * pMid.y + tP * tP * pLow.y;
-
-        ctx.beginPath();
-        ctx.arc(qx, qy, 6, 0, Math.PI * 2);
-        ctx.fillStyle = '#10b981';
-        ctx.shadowColor = '#34d399';
-        ctx.shadowBlur = 12;
-        ctx.fill();
-        ctx.shadowBlur = 0; // reset
-      }
-
-      // Single Cell Transducers & Acoustic Beam Rays
-      if (sceneMode === 'single_cell') {
-        const txPos = { x: -cellRadius - 10, y: 0, z: 0 };
-        const rxPos = { x: cellRadius + 10, y: 0, z: 0 };
-        const pTx = project(txPos, width, height);
-        const pRx = project(rxPos, width, height);
-
-        // Transducer Blocks
-        ctx.fillStyle = '#0ea5e9';
-        ctx.fillRect(pTx.x - 8, pTx.y - 8, 16, 16);
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '10px monospace';
-        ctx.fillText('Tx', pTx.x - 6, pTx.y - 12);
-
-        ctx.fillStyle = '#10b981';
-        ctx.fillRect(pRx.x - 8, pRx.y - 8, 16, 16);
-        ctx.fillStyle = '#ffffff';
-        ctx.fillText('Rx', pRx.x - 6, pRx.y - 12);
-
-        // Acoustic Wavefront Propagation Rays
-        const numRays = 7;
-        const waveAtten = frame?.ultrasonic_amplitude || 1.0;
-
-        for (let i = 0; i < numRays; i++) {
-          const yOff = ((i - (numRays - 1) / 2) * cellHeight * 0.38) / numRays;
-          const rStart = project({ x: -cellRadius, y: yOff, z: 0 }, width, height);
-          const rEnd = project({ x: cellRadius, y: yOff, z: 0 }, width, height);
-
-          // Animated acoustic pulse
-          const wavePulseX = -cellRadius + ((wavePhaseRef.current * 28) % (cellRadius * 2));
-          const pPulse = project({ x: wavePulseX, y: yOff, z: 0 }, width, height);
-
-          ctx.beginPath();
-          ctx.moveTo(rStart.x, rStart.y);
-          ctx.lineTo(rEnd.x, rEnd.y);
-          ctx.strokeStyle = degMode === 'gas_generation' 
-            ? 'rgba(236, 72, 153, 0.4)' 
-            : `rgba(14, 165, 233, ${0.25 * waveAtten})`;
-          ctx.lineWidth = 2;
-          ctx.stroke();
-
-          ctx.beginPath();
-          ctx.arc(pPulse.x, pPulse.y, 4, 0, Math.PI * 2);
-          ctx.fillStyle = degMode === 'gas_generation' ? '#ec4899' : '#38bdf8';
-          ctx.fill();
-        }
-
-        // Degradation Anomaly Overlays
-        if (degMode === 'li_plating') {
-          for (let i = 0; i < 20; i++) {
-            const ang = (i * Math.PI * 2) / 20;
-            const dPos = project({
-              x: (cellRadius - 2) * Math.cos(ang),
-              y: (Math.sin(i * 1.7) * cellHeight) / 3,
-              z: (cellRadius - 2) * Math.sin(ang)
-            }, width, height);
-            ctx.beginPath();
-            ctx.arc(dPos.x, dPos.y, 3, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(45, 212, 191, 0.85)';
-            ctx.fill();
-          }
-        } else if (degMode === 'gas_generation') {
-          for (let i = 0; i < 14; i++) {
-            const bPos = project({
-              x: Math.sin(i * 2.3) * cellRadius * 0.65,
-              y: Math.cos(i * 1.7) * cellHeight * 0.35,
-              z: Math.sin(i * 0.9) * cellRadius * 0.65
-            }, width, height);
-            ctx.beginPath();
-            ctx.arc(bPos.x, bPos.y, 5 + (i % 4), 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(236, 72, 153, 0.65)';
-            ctx.fill();
-            ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 1;
-            ctx.stroke();
-          }
-        } else if (degMode === 'internal_short') {
-          const defectPos = project({ x: 4, y: 0, z: 4 }, width, height);
-          const radPulse = 14 + Math.sin(wavePhaseRef.current * 4) * 4;
-          ctx.beginPath();
-          ctx.arc(defectPos.x, defectPos.y, radPulse, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(239, 68, 68, 0.75)';
-          ctx.fill();
-          ctx.strokeStyle = '#fbbf24';
-          ctx.lineWidth = 2;
-          ctx.stroke();
-        }
-      }
-
-      renderOscilloscope();
-      animationFrameRef.current = requestAnimationFrame(render);
-    };
-
-    render();
-
-    return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, [project, pitch, yaw, zoom, autoRotate, renderMode, sceneMode, colormap, showWireframe, frame, isDragging, renderOscilloscope, getColor]);
-
-  // Mouse drag interaction
-  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    setIsDragging(true);
-    setDragStart({ x: e.clientX, y: e.clientY });
-  };
-
-  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDragging) return;
-    const dx = e.clientX - dragStart.x;
-    const dy = e.clientY - dragStart.y;
-    setYaw(y => y + dx * 0.008);
-    setPitch(p => Math.max(-Math.PI / 2 + 0.1, Math.min(Math.PI / 2 - 0.1, p - dy * 0.008)));
-    setDragStart({ x: e.clientX, y: e.clientY });
-  };
-
-  const handleMouseUp = () => {
-    setIsDragging(false);
-  };
-
-  const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
-    e.preventDefault();
-    setZoom(z => Math.max(0.4, Math.min(2.5, z - e.deltaY * 0.001)));
-  };
-
-  // Camera Presets
-  const setCameraPreset = (preset: 'iso' | 'top' | 'cutaway' | 'pack') => {
-    if (preset === 'iso') {
-      setPitch(0.35); setYaw(0.78); setZoom(1.0);
-    } else if (preset === 'top') {
-      setPitch(1.50); setYaw(0.0); setZoom(1.1);
-    } else if (preset === 'cutaway') {
-      setPitch(0.20); setYaw(0.45); setZoom(1.2); setRenderMode('cutaway');
-    } else if (preset === 'pack') {
-      setPitch(0.40); setYaw(0.60); setZoom(0.85); setSceneMode('pack_module');
     }
+    setIsCycleRunning(false);
   };
 
-  if (mode !== '3d' && mode !== 'gazebo') {
-    return null;
-  }
+  // Switch Camera View Presets
+  const setCameraPreset = (preset: 'overview' | 'gantry' | 'horns' | 'rebalancer') => {
+    if (preset === 'overview') {
+      sphericalRef.current = { radius: 42, phi: Math.PI / 3, theta: 0.8 };
+      targetRef.current.set(0, 6, 0);
+    } else if (preset === 'gantry') {
+      sphericalRef.current = { radius: 22, phi: Math.PI / 4, theta: 0.4 };
+      targetRef.current.set(0, 11, 0);
+    } else if (preset === 'horns') {
+      sphericalRef.current = { radius: 18, phi: Math.PI / 2.3, theta: 0.0 };
+      targetRef.current.set(0, 6, 0);
+    } else if (preset === 'rebalancer') {
+      sphericalRef.current = { radius: 20, phi: Math.PI / 2.8, theta: -1.2 };
+      targetRef.current.set(-11, 4, 3);
+    }
+    updateCameraPosition();
+  };
 
   return (
-    <div className="view-container three-d-view" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* View Header */}
-      <div className="view-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 20px', background: '#0f172a', borderBottom: '1px solid #1e293b' }}>
-        <h2 style={{ margin: 0, fontSize: '1.2rem', color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span>🔋</span> {mode === 'gazebo' ? 'Gazebo Coupled Multi-Physics Environment' : '3D Multi-Physics & Active Rebalancing Visualizer'}
-        </h2>
-        <div className="view-status" style={{ display: 'flex', gap: '16px', alignItems: 'center', fontSize: '0.85rem' }}>
-          <span style={{ color: '#10b981', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ width: '8px', height: '8px', background: '#10b981', borderRadius: '50%', display: 'inline-block' }} />
-            {mode.toUpperCase()} STREAMING
-          </span>
-          <span style={{ color: '#94a3b8' }}>Frame: {frame?.frameId?.slice(0, 8) || '00000000'}</span>
-          <span style={{ color: '#94a3b8' }}>
-            {frame?.timestamp ? new Date(frame.timestamp * 1000).toLocaleTimeString() : '--:--:--'}
-          </span>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#070a13', color: '#e2e8f0' }}>
+      {/* Top Industrial Machine Toolbar */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        padding: '10px 14px',
+        background: '#0f172a',
+        borderBottom: '1px solid #1e293b',
+        flexWrap: 'wrap'
+      }}>
+        {/* Format Selector Pills */}
+        <div style={{ display: 'flex', gap: '4px', background: '#020617', padding: '3px', borderRadius: '6px' }}>
+          {(['18650_cylindrical', '21700_cylindrical', 'prismatic_100ah', 'pouch_60ah'] as CellFormat[]).map((fmt) => (
+            <button
+              key={fmt}
+              onClick={() => setSelectedFormat(fmt)}
+              style={{
+                padding: '4px 8px',
+                fontSize: '0.74rem',
+                borderRadius: '4px',
+                border: 'none',
+                background: selectedFormat === fmt ? '#0284c7' : 'transparent',
+                color: selectedFormat === fmt ? '#ffffff' : '#94a3b8',
+                fontWeight: selectedFormat === fmt ? 700 : 500,
+                cursor: 'pointer'
+              }}
+            >
+              {fmt === '18650_cylindrical' ? '18650 4S'
+                : fmt === '21700_cylindrical' ? '21700 Pack'
+                : fmt === 'prismatic_100ah' ? 'Prismatic 100Ah'
+                : 'Pouch 60Ah'}
+            </button>
+          ))}
         </div>
-      </div>
 
-      {/* 3D View Controls Toolbar */}
-      <div style={{ display: 'flex', gap: '8px', padding: '10px 20px', background: '#1e293b', borderBottom: '1px solid #334155', alignItems: 'center', flexWrap: 'wrap' }}>
-        {/* Scene Mode Selector */}
-        <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 600 }}>Scene:</span>
-        <button
-          onClick={() => setSceneMode('single_cell')}
-          style={{
-            padding: '4px 10px',
-            fontSize: '0.78rem',
-            borderRadius: '4px',
-            border: sceneMode === 'single_cell' ? '1px solid #38bdf8' : '1px solid #475569',
-            background: sceneMode === 'single_cell' ? '#0284c7' : '#334155',
-            color: '#ffffff',
-            cursor: 'pointer'
-          }}
-        >
-          Single Cell
-        </button>
-        <button
-          onClick={() => setSceneMode('pack_module')}
-          style={{
-            padding: '4px 10px',
-            fontSize: '0.78rem',
-            borderRadius: '4px',
-            border: sceneMode === 'pack_module' ? '1px solid #38bdf8' : '1px solid #475569',
-            background: sceneMode === 'pack_module' ? '#0284c7' : '#334155',
-            color: '#ffffff',
-            cursor: 'pointer'
-          }}
-        >
-          4S Pack Module
-        </button>
+        {/* Render View Modes */}
+        <div style={{ display: 'flex', gap: '4px', background: '#020617', padding: '3px', borderRadius: '6px' }}>
+          {(['realistic', 'thermal', 'xray', 'cutaway'] as RenderMode[]).map((m) => (
+            <button
+              key={m}
+              onClick={() => setRenderMode(m)}
+              style={{
+                padding: '4px 8px',
+                fontSize: '0.74rem',
+                borderRadius: '4px',
+                border: 'none',
+                textTransform: 'capitalize',
+                background: renderMode === m ? '#0284c7' : 'transparent',
+                color: renderMode === m ? '#ffffff' : '#94a3b8',
+                fontWeight: renderMode === m ? 700 : 500,
+                cursor: 'pointer'
+              }}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
 
-        <div style={{ width: '1px', height: '18px', background: '#475569', margin: '0 4px' }} />
+        {/* Camera Preset Quick Buttons */}
+        <div style={{ display: 'flex', gap: '4px' }}>
+          <button onClick={() => setCameraPreset('overview')} style={{ padding: '4px 8px', fontSize: '0.74rem', background: '#1e293b', color: '#f8fafc', border: '1px solid #334155', borderRadius: '4px', cursor: 'pointer' }}>👁 Overview</button>
+          <button onClick={() => setCameraPreset('gantry')} style={{ padding: '4px 8px', fontSize: '0.74rem', background: '#1e293b', color: '#f8fafc', border: '1px solid #334155', borderRadius: '4px', cursor: 'pointer' }}>🦾 Clamp</button>
+          <button onClick={() => setCameraPreset('horns')} style={{ padding: '4px 8px', fontSize: '0.74rem', background: '#1e293b', color: '#f8fafc', border: '1px solid #334155', borderRadius: '4px', cursor: 'pointer' }}>🔊 Horns</button>
+          <button onClick={() => setCameraPreset('rebalancer')} style={{ padding: '4px 8px', fontSize: '0.74rem', background: '#1e293b', color: '#f8fafc', border: '1px solid #334155', borderRadius: '4px', cursor: 'pointer' }}>🔄 Rebalancer</button>
+        </div>
 
-        {/* Render Shading Mode */}
-        <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 600 }}>Shader:</span>
-        {(['realistic', 'cutaway', 'thermal', 'acoustic', 'xray'] as RenderMode[]).map(m => (
-          <button
-            key={m}
-            onClick={() => setRenderMode(m)}
-            style={{
-              padding: '4px 10px',
-              fontSize: '0.78rem',
-              borderRadius: '4px',
-              border: renderMode === m ? '1px solid #38bdf8' : '1px solid #475569',
-              background: renderMode === m ? '#0369a1' : '#334155',
-              color: '#ffffff',
-              cursor: 'pointer',
-              textTransform: 'capitalize'
-            }}
-          >
-            {m}
-          </button>
-        ))}
-
-        <div style={{ width: '1px', height: '18px', background: '#475569', margin: '0 4px' }} />
-
-        {/* Colormap Selector */}
-        {renderMode === 'thermal' && (
-          <>
-            <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 600 }}>Colormap:</span>
-            {(['thermal', 'turbo', 'inferno', 'viridis'] as ColormapType[]).map(c => (
-              <button
-                key={c}
-                onClick={() => setColormap(c)}
-                style={{
-                  padding: '4px 8px',
-                  fontSize: '0.75rem',
-                  borderRadius: '4px',
-                  border: colormap === c ? '1px solid #f59e0b' : '1px solid #475569',
-                  background: colormap === c ? '#d97706' : '#334155',
-                  color: '#ffffff',
-                  cursor: 'pointer',
-                  textTransform: 'capitalize'
-                }}
-              >
-                {c}
-              </button>
-            ))}
-            <div style={{ width: '1px', height: '18px', background: '#475569', margin: '0 4px' }} />
-          </>
-        )}
-
-        {/* Camera Presets */}
-        <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 600 }}>Camera:</span>
-        <button
-          onClick={() => setCameraPreset('iso')}
-          style={{ padding: '4px 8px', fontSize: '0.75rem', borderRadius: '4px', border: '1px solid #475569', background: '#334155', color: '#f8fafc', cursor: 'pointer' }}
-        >
-          Iso 3D
-        </button>
-        <button
-          onClick={() => setCameraPreset('top')}
-          style={{ padding: '4px 8px', fontSize: '0.75rem', borderRadius: '4px', border: '1px solid #475569', background: '#334155', color: '#f8fafc', cursor: 'pointer' }}
-        >
-          Top Ortho
-        </button>
-        <button
-          onClick={() => setCameraPreset('cutaway')}
-          style={{ padding: '4px 8px', fontSize: '0.75rem', borderRadius: '4px', border: '1px solid #475569', background: '#334155', color: '#f8fafc', cursor: 'pointer' }}
-        >
-          Cutaway
-        </button>
-
-        <div style={{ width: '1px', height: '18px', background: '#475569', margin: '0 4px' }} />
-
-        {/* Toggles */}
         <button
           onClick={() => setAutoRotate(!autoRotate)}
           style={{
             padding: '4px 10px',
-            fontSize: '0.78rem',
+            fontSize: '0.75rem',
             borderRadius: '4px',
             border: '1px solid #475569',
             background: autoRotate ? '#059669' : '#334155',
@@ -715,7 +866,7 @@ const ThreeDView: React.FC = () => {
           onClick={() => setShowWireframe(!showWireframe)}
           style={{
             padding: '4px 10px',
-            fontSize: '0.78rem',
+            fontSize: '0.75rem',
             borderRadius: '4px',
             border: '1px solid #475569',
             background: showWireframe ? '#7c3aed' : '#334155',
@@ -730,7 +881,7 @@ const ThreeDView: React.FC = () => {
           onClick={() => setShowOscilloscope(!showOscilloscope)}
           style={{
             padding: '4px 10px',
-            fontSize: '0.78rem',
+            fontSize: '0.75rem',
             borderRadius: '4px',
             border: '1px solid #475569',
             background: showOscilloscope ? '#0284c7' : '#334155',
@@ -738,51 +889,160 @@ const ThreeDView: React.FC = () => {
             cursor: 'pointer'
           }}
         >
-          Scope
+          {showOscilloscope ? '📊 Hide Scope' : '📊 Show Scope'}
+        </button>
+
+        {/* Automated Machine Test Cycle Execution Button */}
+        <button
+          onClick={handleStartCycle}
+          disabled={isCycleRunning}
+          style={{
+            padding: '4px 12px',
+            fontSize: '0.76rem',
+            fontWeight: 700,
+            borderRadius: '6px',
+            border: '1px solid #38bdf8',
+            background: isCycleRunning ? '#0284c7' : '#0369a1',
+            color: '#ffffff',
+            cursor: isCycleRunning ? 'not-allowed' : 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px'
+          }}
+        >
+          {isCycleRunning ? `⏳ Running ${cycleStage.replace(/_/g, ' ')} (${cycleProgress}%)` : '▶ Run 6-Stage Cycle'}
+        </button>
+
+        <button
+          onClick={() => window.open('http://localhost:8000/gazebo', '_blank')}
+          style={{
+            marginLeft: 'auto',
+            padding: '4px 12px',
+            fontSize: '0.78rem',
+            fontWeight: 700,
+            borderRadius: '6px',
+            border: '1px solid #10b981',
+            background: '#059669',
+            color: '#ffffff',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px'
+          }}
+        >
+          🌐 Open Gazebo Studio
         </button>
       </div>
 
-      {/* 3D Canvas Container */}
-      <div style={{ position: 'relative', flex: 1, minHeight: '500px', overflow: 'hidden' }}>
-        <canvas
-          ref={canvasRef}
-          width={920}
-          height={540}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
-          onWheel={handleWheel}
-          style={{ width: '100%', height: '100%', cursor: isDragging ? 'grabbing' : 'grab' }}
-        />
+      {/* Main 3D Canvas & Interactive HUD Overlay */}
+      <div style={{ position: 'relative', flex: 1, minHeight: '520px', overflow: 'hidden' }}>
+        <div ref={containerRef} style={{ width: '100%', height: '100%', cursor: 'grab' }} />
 
-        {/* Floating Telemetry HUD (Glassmorphic Top-Left) */}
+        {/* Floating Machine Diagnostics HUD (Top-Left) */}
         <div style={{
           position: 'absolute',
           top: '16px',
           left: '16px',
-          background: 'rgba(15, 23, 42, 0.88)',
-          backdropFilter: 'blur(10px)',
-          border: '1px solid #334155',
-          borderRadius: '10px',
-          padding: '12px 18px',
+          background: 'rgba(15, 23, 42, 0.90)',
+          backdropFilter: 'blur(12px)',
+          border: '1px solid rgba(56, 189, 248, 0.4)',
+          borderRadius: '12px',
+          padding: '14px 18px',
           color: '#f8fafc',
           fontSize: '0.82rem',
           lineHeight: '1.6',
-          boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
-          pointerEvents: 'none'
+          boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+          pointerEvents: 'auto',
+          maxWidth: '320px'
         }}>
-          <div style={{ fontWeight: 700, color: '#38bdf8', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: '0.85rem' }}>
-            Multi-Modal Telemetry
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontWeight: 700, color: '#38bdf8', textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.85rem' }}>
+              Machine Test Station
+            </span>
+            <span style={{
+              background: frame?.data_origin === 'FMU' ? '#2563eb' : '#0284c7',
+              color: '#ffffff',
+              padding: '2px 8px',
+              borderRadius: '9999px',
+              fontSize: '0.70rem',
+              fontWeight: 700
+            }}>
+              {frame?.data_origin || '3D-SIM'}
+            </span>
           </div>
-          <div><strong>Degradation State:</strong> <span style={{ color: '#fbbf24', fontWeight: 600 }}>{frame?.degradation_mode?.replace(/_/g, ' ') || 'healthy'}</span></div>
-          <div><strong>State of Health:</strong> {frame?.stateOfHealth_value?.toFixed(1) || '98.5'}%</div>
-          <div><strong>Terminal Voltage:</strong> {frame?.electrical_voltage?.toFixed(3) || '3.700'} V</div>
-          <div><strong>Surface Temp:</strong> {frame?.thermal_temperature?.toFixed(1) || '25.0'} °C</div>
-          <div><strong>Acoustic ToF:</strong> {frame?.ultrasonic_timeOfFlight?.toFixed(2) || '8.00'} µs</div>
-          <div><strong>Sound Velocity:</strong> {frame?.ultrasonic_speedOfSound?.toFixed(0) || '2500'} m/s</div>
-          <div><strong>Rebalancer:</strong> <span style={{ color: (frame?.rebalancing_state?.toLowerCase().includes('lockout') || frame?.rebalancing_state?.toLowerCase().includes('isolated')) ? '#ef4444' : '#10b981', fontWeight: 600 }}>{frame?.rebalancing_state || 'IDLE'}</span></div>
-          <div><strong>Efficiency:</strong> <span style={{ color: '#34d399', fontWeight: 600 }}>92.4% (ZVS Stage)</span></div>
+          <div><strong>Test Stage:</strong> <span style={{ color: '#fbbf24', fontWeight: 700 }}>{cycleStage}</span></div>
+          <div><strong>Degradation State:</strong> <span style={{ color: '#38bdf8', fontWeight: 600 }}>{frame?.degradation_mode?.replace(/_/g, ' ') || 'healthy'}</span></div>
+          <div><strong>State of Health:</strong> {frame?.stateOfHealth_value !== undefined ? `${frame.stateOfHealth_value.toFixed(1)}%` : '—'}</div>
+          <div><strong>Terminal Voltage:</strong> {frame?.electrical_voltage !== undefined ? `${frame.electrical_voltage.toFixed(3)} V` : '—'}</div>
+          <div><strong>Surface Temp:</strong> {frame?.thermal_temperature !== undefined ? `${frame.thermal_temperature.toFixed(1)} °C` : '—'}</div>
+          <div><strong>Acoustic ToF:</strong> {frame?.ultrasonic_timeOfFlight !== undefined ? `${frame.ultrasonic_timeOfFlight.toFixed(2)} µs` : '—'}</div>
+          <div><strong>Rebalancer:</strong> <span style={{ color: (frame?.rebalancing_state?.toLowerCase().includes('lockout')) ? '#ef4444' : '#10b981', fontWeight: 600 }}>{frame?.rebalancing_state || 'IDLE'}</span></div>
+          <div><strong>ZVS Efficiency:</strong> <span style={{ color: '#34d399', fontWeight: 700 }}>{frame?.zvs_efficiency_pct && frame.zvs_efficiency_pct > 0 ? `${frame.zvs_efficiency_pct.toFixed(1)}% (ZVS Stage)` : '—'}</span></div>
+        </div>
+
+        {/* Interactive Component Inspector Drawer (Top-Right) */}
+        <div style={{
+          position: 'absolute',
+          top: '16px',
+          right: '16px',
+          background: 'rgba(15, 23, 42, 0.92)',
+          backdropFilter: 'blur(14px)',
+          border: '1px solid rgba(255, 255, 255, 0.15)',
+          borderRadius: '12px',
+          padding: '14px',
+          maxWidth: '340px',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+          fontSize: '0.80rem'
+        }}>
+          <div style={{ fontWeight: 700, color: '#38bdf8', marginBottom: '8px', fontSize: '0.85rem' }}>
+            ⚙ Interactive Component Inspector
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '10px' }}>
+            {Object.values(COMPONENT_DETAILS).map((comp) => (
+              <button
+                key={comp.id}
+                onClick={() => setActiveComponent(comp)}
+                style={{
+                  padding: '6px',
+                  borderRadius: '6px',
+                  border: '1px solid',
+                  borderColor: activeComponent?.id === comp.id ? '#38bdf8' : '#334155',
+                  background: activeComponent?.id === comp.id ? 'rgba(56, 189, 248, 0.2)' : '#1e293b',
+                  color: '#f8fafc',
+                  fontSize: '0.72rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}
+              >
+                <span>{comp.icon}</span>
+                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{comp.name.split(' ')[0]}</span>
+              </button>
+            ))}
+          </div>
+
+          {activeComponent && (
+            <div style={{ borderTop: '1px solid #334155', paddingTop: '8px', color: '#cbd5e1', lineHeight: '1.4' }}>
+              <div style={{ fontWeight: 700, color: '#f8fafc', marginBottom: '4px' }}>
+                {activeComponent.icon} {activeComponent.name}
+              </div>
+              <div style={{ fontSize: '0.74rem', color: '#38bdf8', marginBottom: '4px' }}>
+                <strong>Role:</strong> {activeComponent.role}
+              </div>
+              <div style={{ fontSize: '0.73rem', marginBottom: '6px' }}>
+                {activeComponent.principle}
+              </div>
+              <div style={{ fontSize: '0.70rem', color: '#94a3b8', background: '#0f172a', padding: '6px', borderRadius: '4px', marginBottom: '6px' }}>
+                <strong>Specs:</strong> {activeComponent.specs}
+              </div>
+              <div style={{ fontSize: '0.72rem', color: '#34d399', fontWeight: 600 }}>
+                {activeComponent.liveReading}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Embedded Ultrasonic RF Oscilloscope (Bottom-Left) */}
@@ -791,21 +1051,21 @@ const ThreeDView: React.FC = () => {
             position: 'absolute',
             bottom: '16px',
             left: '16px',
-            background: 'rgba(15, 23, 42, 0.92)',
-            backdropFilter: 'blur(8px)',
-            border: '1px solid #334155',
-            borderRadius: '8px',
-            padding: '8px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
+            background: 'rgba(15, 23, 42, 0.94)',
+            backdropFilter: 'blur(10px)',
+            border: '1px solid rgba(56, 189, 248, 0.3)',
+            borderRadius: '10px',
+            padding: '10px',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.6)'
           }}>
-            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#38bdf8', marginBottom: '4px', letterSpacing: '0.05em' }}>
-              ULTRASONIC RF PULSE-ECHO (10 MHz)
+            <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#38bdf8', marginBottom: '6px', letterSpacing: '0.05em' }}>
+              ULTRASONIC RF PULSE-ECHO (10 MHz OSCILLOGRAM)
             </div>
-            <canvas ref={oscCanvasRef} width={260} height={100} style={{ display: 'block', borderRadius: '4px' }} />
+            <canvas ref={oscCanvasRef} width={280} height={110} style={{ display: 'block', borderRadius: '6px' }} />
           </div>
         )}
 
-        {/* Interactive Guide / Legend (Bottom-Right) */}
+        {/* Navigation & Interaction Legend (Bottom-Right) */}
         <div style={{
           position: 'absolute',
           bottom: '16px',
@@ -821,7 +1081,7 @@ const ThreeDView: React.FC = () => {
         }}>
           <div>🖱 <strong>Left Drag:</strong> 3D Orbit Camera</div>
           <div>⚙ <strong>Scroll:</strong> Zoom Perspective</div>
-          <div>✨ <strong>Green Arcs:</strong> Active Rebalance Shuttling</div>
+          <div>✨ <strong>Green Arcs:</strong> ZVS Active Energy Shuttling</div>
         </div>
       </div>
     </div>

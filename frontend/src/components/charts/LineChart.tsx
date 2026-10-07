@@ -19,7 +19,13 @@ const LineChart: React.FC<LineChartProps> = ({
   strokeColor = '#3b82f6',
   showPoints = true
 }) => {
-  if (data.length === 0) {
+  // Sanitize data and remove any NaN or non-finite entries
+  const validData = (data || []).filter(
+    d => d && typeof d.x === 'number' && !isNaN(d.x) && isFinite(d.x) &&
+              typeof d.y === 'number' && !isNaN(d.y) && isFinite(d.y)
+  );
+
+  if (validData.length === 0) {
     return (
       <div style={{ width, height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255, 255, 255, 0.35)', fontSize: '0.8rem' }}>
         No telemetry available
@@ -28,28 +34,28 @@ const LineChart: React.FC<LineChartProps> = ({
   }
 
   // Calculate scales
-  const xMin = Math.min(...data.map(d => d.x));
-  const xMax = Math.max(...data.map(d => d.x));
-  const yMin = Math.min(...data.map(d => d.y));
-  const yMax = Math.max(...data.map(d => d.y));
+  const xMin = Math.min(...validData.map(d => d.x));
+  const xMax = Math.max(...validData.map(d => d.x));
+  const yMin = Math.min(...validData.map(d => d.y));
+  const yMax = Math.max(...validData.map(d => d.y));
 
   // Add padding
-  const xRange = xMax - xMin || 1;
-  const yRange = yMax - yMin || 1;
+  const xRange = (xMax - xMin > 0) ? (xMax - xMin) : 1;
+  const yRange = (yMax - yMin > 0) ? (yMax - yMin) : 1;
   const xPadding = xRange * 0.05;
   const yPadding = yRange * 0.05;
   const xScale = (width - 60) / (xRange + 2 * xPadding);
   const yScale = (height - 40) / (yRange + 2 * yPadding);
 
   // Convert data to screen coordinates
-  const points = data.map(d => ({
+  const points = validData.map(d => ({
     x: 40 + (d.x - (xMin - xPadding)) * xScale,
     y: height - 20 - (d.y - (yMin - yPadding)) * yScale
   }));
 
   // Create SVG path for the line
   const path = points
-    .map((p, i) => (i === 0 ? `M ${p.x} ${p.y}` : `L ${p.x} ${p.y}`))
+    .map((p, i) => (i === 0 ? `M ${p.x.toFixed(1)} ${p.y.toFixed(1)}` : `L ${p.x.toFixed(1)} ${p.y.toFixed(1)}`))
     .join(' ');
 
   return (

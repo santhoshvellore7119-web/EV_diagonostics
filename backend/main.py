@@ -15,8 +15,11 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import numpy as np
+import subprocess
 
 import sys
 import os
@@ -48,6 +51,18 @@ except (ImportError, ValueError):
     from rebalancing import RebalancingProcessor
     from evidence import EvidenceGenerator
 
+try:
+    from .battery_physics import DynamicBatteryPhysicsEngine, BATTERY_CHEMISTRIES, FORM_FACTOR_GEOMETRY
+except (ImportError, ValueError):
+    from battery_physics import DynamicBatteryPhysicsEngine, BATTERY_CHEMISTRIES, FORM_FACTOR_GEOMETRY
+
+try:
+    from .machine_cycle import MachineCycleController
+    from .ascan_synthesizer import synthesize_rf_ascan_waveform
+except (ImportError, ValueError):
+    from machine_cycle import MachineCycleController
+    from ascan_synthesizer import synthesize_rf_ascan_waveform
+
 
 class FrameBuffer:
     def __init__(self, max_size: int = 1000):
@@ -74,10 +89,11 @@ class FrameBuffer:
 # Global instances
 frame_buffer = FrameBuffer(max_size=10000)
 
-# Processors
+# Processors & Machine Workflow Controllers
 ml_processor = MLProcessor(sequence_length=256)
 rebalancing_processor = RebalancingProcessor()
 evidence_generator = EvidenceGenerator(max_buffer_size=10000)
+machine_controller = MachineCycleController()
 
 # Ingestor instances
 firmware_ingestor = FirmwareIngestor()
@@ -196,6 +212,7 @@ class DiagnosticFrameBase(BaseModel):
 
     # Rebalancing state
     rebalancing_state: str
+    rebalancing_active: Optional[bool] = False
     rebalancing_selectedAction: str
     rebalancing_actionReason: str
     rebalancing_powerStage_targetCurrent: float
@@ -204,6 +221,10 @@ class DiagnosticFrameBase(BaseModel):
     rebalancing_powerStage_actualVoltage: float
     rebalancing_powerStage_pwmDutyCycle: float
     rebalancing_executionTime: float
+    zvs_efficiency_pct: Optional[float] = 0.0
+
+    # Data provenance and origin
+    data_origin: Optional[str] = 'LIVE'
 
     # Simulation fields (optional)
     simulation_soc: Optional[float] = None
@@ -254,6 +275,188 @@ async def root():
     }
 
 
+@app.get("/gazebo")
+async def get_gazebo_viewer():
+    """Serve the interactive Gazebo 3D Digital Twin Studio."""
+    viewer_path = os.path.join(backend_dir, "static", "gazebo_viewer.html")
+    if os.path.exists(viewer_path):
+        return FileResponse(viewer_path, media_type="text/html")
+    raise HTTPException(status_code=404, detail="Gazebo viewer not found")
+
+
+@app.get("/api/gazebo/open")
+@app.post("/api/gazebo/open")
+async def open_gazebo():
+    """Trigger or redirect to Gazebo 3D World / Digital Twin viewer."""
+    return {
+        "status": "success",
+        "action": "open_viewer",
+        "url": "/gazebo",
+        "message": "Gazebo 3D Studio opened successfully."
+    }
+
+
+def find_matlab_executable() -> Optional[str]:
+    """Finds the local MATLAB executable across PATH, Program Files, and registry."""
+    import shutil
+    import glob
+
+    # 1. Check system PATH
+    which_path = shutil.which("matlab")
+    if which_path and os.path.exists(which_path):
+        return which_path
+
+    # 2. Check standard Windows Program Files
+    candidates = [
+        r"C:\Program Files\MATLAB\R2025b\bin\matlab.exe",
+        r"C:\Program Files\MATLAB\R2025a\bin\matlab.exe",
+        r"C:\Program Files\MATLAB\R2024b\bin\matlab.exe",
+        r"C:\Program Files\MATLAB\R2024a\bin\matlab.exe",
+        r"C:\Program Files\MATLAB\R2023b\bin\matlab.exe",
+        r"C:\Program Files\MATLAB\R2023a\bin\matlab.exe",
+        r"C:\Program Files\MATLAB\R2022b\bin\matlab.exe",
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+
+    # 3. Dynamic glob search in MATLAB root directory
+    matlab_root = r"C:\Program Files\MATLAB"
+    if os.path.exists(matlab_root):
+        matches = glob.glob(os.path.join(matlab_root, "*", "bin", "matlab.exe"))
+        if matches:
+            # Pick highest version
+            return sorted(matches)[-1]
+
+    return None
+
+
+@app.get("/api/simulink/open")
+@app.post("/api/simulink/open")
+async def open_simulink():
+    """
+    Launch or redirect to MATLAB Simulink model (ev_cell_digital_twin.slx).
+    Directly opens the MATLAB desktop software installed on the PC.
+    """
+    launch_script = os.path.join(project_root, "matlab_simulink_demo", "launch_simulink.m")
+    demo_dir = os.path.join(project_root, "matlab_simulink_demo")
+    slx_path = os.path.join(demo_dir, "models", "ev_cell_digital_twin.slx")
+    matlab_cmd = f"run('{launch_script.replace(os.sep, '/')}');"
+
+    matlab_exe = find_matlab_executable()
+    launched = False
+    error_msg = None
+
+    if matlab_exe and os.path.exists(matlab_exe):
+        try:
+            print(f"[MATLAB Launcher] Found MATLAB at: {matlab_exe}. Spawning process...")
+            cmd = [
+                matlab_exe,
+                "-sd", demo_dir,
+                "-r", f"run('{launch_script.replace(os.sep, '/')}');"
+            ]
+            if sys.platform == "win32":
+                DETACHED_PROCESS = 0x00000008
+                subprocess.Popen(cmd, creationflags=DETACHED_PROCESS, close_fds=True)
+            else:
+                subprocess.Popen(cmd)
+            launched = True
+        except Exception as e:
+            error_msg = str(e)
+            print(f"[MATLAB Launcher] Error spawning MATLAB executable: {e}")
+    else:
+        # Fallback to general system command
+        try:
+            subprocess.Popen(["matlab", "-sd", demo_dir, "-r", matlab_cmd], shell=True)
+            launched = True
+        except Exception as e:
+            error_msg = str(e)
+
+    return {
+        "status": "success" if launched else "fallback",
+        "launched_locally": launched,
+        "matlab_executable": matlab_exe,
+        "model_name": "ev_cell_digital_twin",
+        "model_path": slx_path,
+        "launch_script": launch_script,
+        "matlab_command": matlab_cmd,
+        "instructions": f"In MATLAB Command Window, run:\naddpath(genpath('{demo_dir.replace(os.sep, '/')}'));\nrun('{launch_script.replace(os.sep, '/')}');"
+    }
+
+
+@app.get("/api/matlab/ml_demo/open")
+@app.post("/api/matlab/ml_demo/open")
+async def open_matlab_ml_demo():
+    """Launch the standalone Multi-Modal ML Fusion Demonstrator in MATLAB."""
+    launch_script = os.path.join(project_root, "run_matlab_ml_demo.m")
+    matlab_cmd = f"run('{launch_script.replace(os.sep, '/')}');"
+    matlab_exe = find_matlab_executable()
+    launched = False
+
+    if matlab_exe and os.path.exists(matlab_exe):
+        try:
+            cmd = [
+                matlab_exe,
+                "-sd", project_root,
+                "-r", f"run('{launch_script.replace(os.sep, '/')}');"
+            ]
+            if sys.platform == "win32":
+                DETACHED_PROCESS = 0x00000008
+                subprocess.Popen(cmd, creationflags=DETACHED_PROCESS, close_fds=True)
+            else:
+                subprocess.Popen(cmd)
+            launched = True
+        except Exception as e:
+            print(f"[MATLAB ML Launcher] Error spawning MATLAB: {e}")
+    else:
+        try:
+            subprocess.Popen(["matlab", "-sd", project_root, "-r", matlab_cmd], shell=True)
+            launched = True
+        except Exception:
+            pass
+
+    return {
+        "status": "success" if launched else "fallback",
+        "launched_locally": launched,
+        "script": "run_matlab_ml_demo.m",
+        "matlab_command": matlab_cmd,
+        "instructions": f"In MATLAB Command Window run:\nrun('{launch_script.replace(os.sep, '/')}');"
+    }
+
+
+@app.get("/api/machine/status")
+async def get_machine_status():
+    """Get the current state and metrics of the 6-stage automated test machine."""
+    return machine_controller.get_status()
+
+
+@app.post("/api/machine/cycle/start")
+async def start_machine_cycle(degradation_mode: Optional[str] = 'healthy'):
+    """Initiate the 6-stage automated robotic diagnostic and recovery cycle."""
+    if not machine_controller.is_running:
+        asyncio.create_task(machine_controller.start_automated_cycle(degradation_mode))
+    return {"status": "started", "machine": machine_controller.get_status()}
+
+
+@app.post("/api/machine/format/set")
+async def set_cell_format(format_name: str = Query(..., description="18650_cylindrical, 21700_cylindrical, prismatic_100ah, pouch_60ah")):
+    """Set the active cell form factor geometry and clamping parameters."""
+    machine_controller.set_cell_format(format_name)
+    return {"status": "success", "selected_format": format_name, "info": machine_controller.get_status()}
+
+
+@app.get("/api/ascan/latest")
+async def get_latest_ascan():
+    """Get synthesized 10 MHz RF Ultrasonic A-scan oscillogram with defect echo detection."""
+    latest = frame_buffer.get_latest()
+    tof = latest.get("ultrasonic_timeOfFlight", 8.0) if latest else 8.0
+    sos = latest.get("ultrasonic_speedOfSound", 2500.0) if latest else 2500.0
+    deg = latest.get("degradation_mode", "healthy") if latest else "healthy"
+    att = latest.get("ultrasonic_amplitude", 1.0) if latest else 1.0
+    fmt = machine_controller.selected_format
+    return synthesize_rf_ascan_waveform(tof_us=tof, sos=sos, degradation_mode=deg, attenuation=att, cell_format=fmt)
+
+
 @app.get("/api/frames/latest")
 async def get_latest_frame():
     """Get the most recent DiagnosticFrame."""
@@ -300,42 +503,139 @@ async def set_mode(mode: str = Query(..., description="Data source mode: live, s
     return {"message": f"Mode set to {mode}", "mode": mode}
 
 
+# --- Physical Serial Hardware Ingestion Endpoints ---
+@app.get("/api/firmware/ports")
+async def list_serial_ports():
+    """List physical serial COM ports detected on the host machine."""
+    ports = firmware_ingestor.list_available_ports()
+    return {"ports": ports, "count": len(ports)}
+
+
+class FirmwareConnectRequest(BaseModel):
+    port: str
+    baudrate: Optional[int] = 115200
+
+
+@app.post("/api/firmware/connect")
+async def connect_firmware(req: FirmwareConnectRequest):
+    """Connect to a physical hardware serial COM port."""
+    success = await firmware_ingestor.connect(port=req.port, baudrate=req.baudrate)
+    if success:
+        return {"status": "connected", "port": req.port, "baudrate": req.baudrate}
+    else:
+        raise HTTPException(status_code=400, detail=f"Failed to connect to serial port {req.port}")
+
+
+@app.post("/api/firmware/disconnect")
+async def disconnect_firmware():
+    """Disconnect from physical hardware serial port."""
+    await firmware_ingestor.disconnect()
+    return {"status": "disconnected"}
+
+
+@app.get("/api/firmware/status")
+async def get_firmware_status():
+    """Get live hardware connection status and port details."""
+    return firmware_ingestor.get_status()
+
+
+# --- Dynamic Battery Chemistry & Physics Configuration Endpoints ---
+@app.get("/api/battery/chemistries")
+async def get_battery_chemistries():
+    """Get canonical electrochemical profiles for all supported battery chemistries."""
+    return {"chemistries": BATTERY_CHEMISTRIES}
+
+
+@app.get("/api/battery/form_factors")
+async def get_battery_form_factors():
+    """Get geometric dimensions for all cell form factors."""
+    return {"form_factors": FORM_FACTOR_GEOMETRY}
+
+
+class BatteryParamUpdateRequest(BaseModel):
+    chemistry: Optional[str] = None
+    form_factor: Optional[str] = None
+    soc: Optional[float] = None
+    ambient_temp_c: Optional[float] = None
+    load_current_c: Optional[float] = None
+    cycle_count: Optional[int] = None
+    degradation_mode: Optional[str] = None
+    noise_level: Optional[float] = None
+    excitation_amplitude: Optional[float] = None
+
+
+@app.post("/api/battery/parameters/set")
+async def set_battery_parameters(params: BatteryParamUpdateRequest):
+    """Dynamically set physical parameters across all simulation models in real-time."""
+    pdict = {k: v for k, v in params.model_dump().items() if v is not None} if hasattr(params, 'model_dump') else {k: v for k, v in params.dict().items() if v is not None}
+    
+    # Propagate to 3D and Gazebo ingestors
+    for ing in [threed_ingestor, gazebo_ingestor]:
+        if hasattr(ing, 'set_parameters'):
+            await ing.set_parameters(**pdict)
+            
+    # Propagate format to machine controller if provided
+    if params.form_factor:
+        machine_controller.set_cell_format(params.form_factor)
+        
+    return {"status": "updated", "parameters": pdict}
+
+
+@app.get("/api/battery/state")
+async def get_battery_state():
+    """Get current physical state from active simulator."""
+    if hasattr(active_ingestor, 'engine'):
+        return active_ingestor.engine.get_state()
+    return {"status": "no_physics_engine_in_mode", "mode": active_mode}
+
+
 @app.post("/api/simulation/parameters")
 async def set_simulation_parameters(
     degradation_mode: Optional[str] = None,
     soc: Optional[float] = None,
     noise_level: Optional[float] = None,
-    excitation_amplitude: Optional[float] = None
+    excitation_amplitude: Optional[float] = None,
+    chemistry: Optional[str] = None,
+    form_factor: Optional[str] = None,
+    ambient_temp_c: Optional[float] = None,
+    load_current_c: Optional[float] = None,
+    cycle_count: Optional[int] = None
 ):
     """Dynamically propagate simulation parameters to all ingestors and underlying simulators."""
     valid_degs = ['healthy', 'li_plating', 'active_material_loss', 'electrolyte_decomposition', 'gas_generation', 'internal_short']
     if degradation_mode is not None and degradation_mode not in valid_degs:
         raise HTTPException(status_code=400, detail=f"Invalid degradation_mode. Must be one of {valid_degs}")
 
+    params = {}
+    if degradation_mode is not None: params['degradation_mode'] = degradation_mode
+    if soc is not None: params['soc'] = soc
+    if noise_level is not None: params['noise_level'] = noise_level
+    if excitation_amplitude is not None: params['excitation_amplitude'] = excitation_amplitude
+    if chemistry is not None: params['chemistry'] = chemistry
+    if form_factor is not None: params['form_factor'] = form_factor
+    if ambient_temp_c is not None: params['ambient_temp_c'] = ambient_temp_c
+    if load_current_c is not None: params['load_current_c'] = load_current_c
+    if cycle_count is not None: params['cycle_count'] = cycle_count
+
     for ing in [threed_ingestor, gazebo_ingestor, simulink_ingestor, firmware_ingestor]:
         if hasattr(ing, 'set_parameters'):
-            await ing.set_parameters(
-                soc=soc,
-                degradation_mode=degradation_mode,
-                noise_level=noise_level,
-                excitation_amplitude=excitation_amplitude
-            )
+            await ing.set_parameters(**params)
         else:
-            if degradation_mode is not None:
+            if degradation_mode is not None and hasattr(ing, 'degradation_mode'):
                 ing.degradation_mode = degradation_mode
-            if soc is not None:
+            if soc is not None and hasattr(ing, 'soc'):
                 ing.soc = soc
-            if noise_level is not None:
+            if noise_level is not None and hasattr(ing, 'noise_level'):
                 ing.noise_level = noise_level
-            if excitation_amplitude is not None:
+            if excitation_amplitude is not None and hasattr(ing, 'excitation_amplitude'):
                 ing.excitation_amplitude = excitation_amplitude
+
+    if form_factor:
+        machine_controller.set_cell_format(form_factor)
 
     return {
         "status": "updated",
-        "degradation_mode": degradation_mode,
-        "soc": soc,
-        "noise_level": noise_level,
-        "excitation_amplitude": excitation_amplitude
+        **params
     }
 
 
@@ -379,40 +679,131 @@ async def websocket_endpoint(websocket: WebSocket):
         manager.disconnect(websocket)
 
 
-# Data pipeline simulation loop (10 Hz)
+# Data pipeline streaming loop (10 Hz)
 async def simulate_data():
     """Streaming loop fetching frames from ingestor, passing through ML and Rebalancing."""
     frame_id = 0
     while True:
         try:
-            # 1. Fetch raw frame from active ingestor
             frame = None
-            if active_ingestor is not None:
-                if hasattr(active_ingestor, 'get_frame'):
-                    frame = await active_ingestor.get_frame()
-                elif hasattr(active_ingestor, 'read_frame'):
-                    frame = await active_ingestor.read_frame()
-                elif hasattr(active_ingestor, 'step'):
-                    frame = await active_ingestor.step()
 
-            if frame is None:
-                frame = _generate_fallback_frame()
+            # --- STRICT ISOLATION: LIVE HARDWARE vs SIMULATION MODES ---
+            if active_mode == 'live':
+                if firmware_ingestor.is_connected:
+                    raw_hw = await firmware_ingestor.read_frame()
+                    if raw_hw is not None:
+                        frame = raw_hw
+                    else:
+                        frame = firmware_ingestor.last_hardware_packet
+
+                if frame is None:
+                    # Hardware disconnected: do NOT generate fake simulated readings
+                    ports = firmware_ingestor.list_available_ports()
+                    frame = {
+                        "timestamp": time.time(),
+                        "frameId": f"HW-DISCONNECTED-{frame_id:06d}",
+                        "source": "live",
+                        "data_origin": "LIVE-DISCONNECTED",
+                        "hardware_connected": False,
+                        "cellId": "physical_serial_port",
+                        "packId": "live_hardware_pack",
+                        "status_message": "Hardware Disconnected: Connect ESP32 / DAQ on physical COM port to stream live sensor data.",
+                        "available_ports": ports,
+
+                        # Electrical data (zeroed when hardware not attached)
+                        "electrical_voltage": 0.0,
+                        "electrical_current": 0.0,
+                        "electrical_power": 0.0,
+                        "electrical_resistance": 0.0,
+                        "electrical_uncertainty": 0.0,
+
+                        # Ultrasonic data
+                        "ultrasonic_timeOfFlight": 0.0,
+                        "ultrasonic_amplitude": 0.0,
+                        "ultrasonic_phaseShift": 0.0,
+                        "ultrasonic_speedOfSound": 0.0,
+                        "ultrasonic_uncertainty": 0.0,
+
+                        # Thermal data
+                        "thermal_temperature": 0.0,
+                        "thermal_tempGradient": 0.0,
+                        "thermal_heatFlux": 0.0,
+                        "thermal_uncertainty": 0.0,
+
+                        # State of Health
+                        "stateOfHealth_value": 0.0,
+                        "stateOfHealth_confidenceInterval_lower": 0.0,
+                        "stateOfHealth_confidenceInterval_upper": 0.0,
+                        "stateOfHealth_method": "hardware_port_disconnected",
+
+                        # Degradation classification
+                        "degradation_mode": "disconnected",
+                        "degradation_probability": 0.0,
+                        "degradation_perClass_healthy": 0.0,
+                        "degradation_perClass_li_plating": 0.0,
+                        "degradation_perClass_active_material_loss": 0.0,
+                        "degradation_perClass_electrolyte_decomposition": 0.0,
+                        "degradation_perClass_gas_generation": 0.0,
+                        "degradation_perClass_internal_short": 0.0,
+                        "degradation_entropy": 0.0,
+
+                        # Rebalancing state
+                        "rebalancing_state": "DISCONNECTED",
+                        "rebalancing_selectedAction": "none",
+                        "rebalancing_actionReason": "No physical COM port connected",
+                        "rebalancing_powerStage_targetCurrent": 0.0,
+                        "rebalancing_powerStage_actualCurrent": 0.0,
+                        "rebalancing_powerStage_targetVoltage": 0.0,
+                        "rebalancing_powerStage_actualVoltage": 0.0,
+                        "rebalancing_powerStage_pwmDutyCycle": 0.0,
+                        "rebalancing_executionTime": 0.0
+                    }
+            else:
+                # Simulation modes (3d, gazebo, simulink)
+                if active_ingestor is not None:
+                    if hasattr(active_ingestor, 'get_frame'):
+                        frame = await active_ingestor.get_frame()
+                    elif hasattr(active_ingestor, 'read_frame'):
+                        frame = await active_ingestor.read_frame()
+                    elif hasattr(active_ingestor, 'step'):
+                        frame = await active_ingestor.step()
+
+                if frame is None:
+                    frame = _generate_fallback_frame()
 
             # Ensure correct source label
             frame["source"] = active_mode
 
-            # 2. Process frame through ML pipeline (SOH estimation + degradation classification)
-            enhanced_frame = await ml_processor.process_frame(frame)
-            if enhanced_frame is not None:
-                frame = enhanced_frame
+            # Only run ML & Rebalancing if hardware is connected or in simulation mode
+            if frame.get("data_origin") != "LIVE-DISCONNECTED":
+                # 2. Process frame through ML pipeline (SOH estimation + degradation classification)
+                enhanced_frame = await ml_processor.process_frame(frame)
+                if enhanced_frame is not None:
+                    frame = enhanced_frame
 
-            # 3. Process frame through Active Rebalancing engine
-            rebalancing_info = rebalancing_processor.process_frame(frame)
-            if rebalancing_info:
-                frame.update(rebalancing_info)
+                # 3. Process frame through Active Rebalancing engine
+                rebalancing_info = rebalancing_processor.process_frame(frame)
+                if rebalancing_info:
+                    frame.update(rebalancing_info)
+
+            # 3.5 Generate live A-Scan RF waveform & machine status overlay
+            tof_val = float(frame.get('ultrasonic_timeOfFlight', 8.0))
+            sos_val = float(frame.get('ultrasonic_speedOfSound', 2500.0))
+            deg_val = str(frame.get('degradation_mode', 'healthy'))
+            att_val = float(frame.get('ultrasonic_amplitude', 1.0))
+            fmt_val = str(machine_controller.selected_format)
+
+            frame['ascan_waveform'] = synthesize_rf_ascan_waveform(
+                tof_us=tof_val if tof_val > 0 else 8.0,
+                sos=sos_val if sos_val > 0 else 2500.0,
+                degradation_mode=deg_val if deg_val != 'disconnected' else 'healthy',
+                attenuation=att_val if att_val > 0 else 1.0,
+                cell_format=fmt_val
+            )
+            frame['machine_cycle'] = machine_controller.get_status()
 
             # 4. Record frame in evidence generator (if active) and buffer
-            if evidence_generator.is_recording:
+            if evidence_generator.is_recording and frame.get("data_origin") != "LIVE-DISCONNECTED":
                 evidence_generator.record_frame(frame)
 
             frame_buffer.add(frame)
@@ -430,58 +821,64 @@ async def simulate_data():
             await asyncio.sleep(1.0)
 
 
+_fallback_physics_engine = DynamicBatteryPhysicsEngine()
+
 def _generate_fallback_frame() -> Dict[str, Any]:
-    """Generate a fallback frame when ingestors are not available."""
-    base_v = 3.6 + random.uniform(-0.1, 0.1)
-    base_i = 1.5 + random.uniform(-0.2, 0.2)
+    """Generate a physical dynamic frame when ingestors are not available."""
+    raw_physics = _fallback_physics_engine.step(dt=0.1)
     frame = {
-        "timestamp": time.time(),
-        "frameId": str(uuid.uuid4()),
-        "source": active_mode if active_mode in ['live', 'simulink', '3d', 'gazebo'] else "fallback",
-        "cellId": "cell_001",
+        "timestamp": raw_physics["timestamp"],
+        "frameId": f"PHYS-SIM-{int(time.time()*1000)%1000000:06d}",
+        "source": active_mode if active_mode in ['live', 'simulink', '3d', 'gazebo'] else "3d",
+        "data_origin": "DYNAMIC-BATTERY-PHYSICS",
+        "cellId": f"cell_{_fallback_physics_engine.chemistry}_{_fallback_physics_engine.form_factor}",
         "packId": "pack_001",
+        "battery_chemistry": raw_physics["chemistry"],
+        "battery_chemistry_name": raw_physics["chemistry_name"],
+        "battery_form_factor": raw_physics["form_factor"],
+        "battery_form_factor_name": raw_physics["form_factor_name"],
 
-        # Electrical data (simulated)
-        "electrical_voltage": base_v,
-        "electrical_current": base_i,
-        "electrical_power": base_v * base_i,
-        "electrical_resistance": 0.05 + random.uniform(-0.005, 0.005),
-        "electrical_uncertainty": 0.01,
+        # Electrical data
+        "electrical_voltage": raw_physics["electrical_voltage"],
+        "electrical_current": raw_physics["electrical_current"],
+        "electrical_power": raw_physics["electrical_power"],
+        "electrical_resistance": raw_physics["electrical_resistance"],
+        "electrical_uncertainty": raw_physics["electrical_uncertainty"],
 
-        # Ultrasonic data (in microseconds)
-        "ultrasonic_timeOfFlight": 8.0 + random.uniform(-0.3, 0.3),
-        "ultrasonic_amplitude": 1.0 + random.uniform(-0.1, 0.1),
-        "ultrasonic_phaseShift": 0.0 + random.uniform(-0.05, 0.05),
-        "ultrasonic_speedOfSound": 2500.0 + random.uniform(-50, 50),
-        "ultrasonic_uncertainty": 0.1,
+        # Ultrasonic data
+        "ultrasonic_timeOfFlight": raw_physics["ultrasonic_timeOfFlight"],
+        "ultrasonic_amplitude": raw_physics["ultrasonic_amplitude"],
+        "ultrasonic_phaseShift": raw_physics["ultrasonic_phaseShift"],
+        "ultrasonic_speedOfSound": raw_physics["ultrasonic_speedOfSound"],
+        "ultrasonic_uncertainty": raw_physics["ultrasonic_uncertainty"],
 
         # Thermal data
-        "thermal_temperature": 26.5 + random.uniform(-2, 4),
-        "thermal_tempGradient": 0.08 + random.uniform(-0.02, 0.02),
-        "thermal_heatFlux": 10.0 + random.uniform(-2, 2),
-        "thermal_uncertainty": 0.5,
+        "thermal_temperature": raw_physics["thermal_temperature"],
+        "thermal_tempGradient": raw_physics["thermal_tempGradient"],
+        "thermal_heatFlux": raw_physics["thermal_heatFlux"],
+        "thermal_uncertainty": raw_physics["thermal_uncertainty"],
 
-        # State of Health (initial estimate)
-        "stateOfHealth_value": 88.0 + random.uniform(-2, 2),
-        "stateOfHealth_confidenceInterval_lower": 85.0,
-        "stateOfHealth_confidenceInterval_upper": 91.0,
-        "stateOfHealth_method": "fusion",
+        # State of Health
+        "stateOfHealth_value": raw_physics["stateOfHealth_physical_ground_truth"],
+        "stateOfHealth_confidenceInterval_lower": max(0.0, raw_physics["stateOfHealth_physical_ground_truth"] - 3.0),
+        "stateOfHealth_confidenceInterval_upper": min(100.0, raw_physics["stateOfHealth_physical_ground_truth"] + 3.0),
+        "stateOfHealth_method": "dynamic_physics_fusion",
 
         # Degradation classification
-        "degradation_mode": "healthy",
-        "degradation_probability": 0.94,
-        "degradation_perClass_healthy": 0.94,
-        "degradation_perClass_li_plating": 0.02,
-        "degradation_perClass_active_material_loss": 0.01,
-        "degradation_perClass_electrolyte_decomposition": 0.01,
-        "degradation_perClass_gas_generation": 0.01,
-        "degradation_perClass_internal_short": 0.01,
-        "degradation_entropy": 0.08,
+        "degradation_mode": raw_physics["degradation_mode"],
+        "degradation_probability": 0.95,
+        "degradation_perClass_healthy": 0.95 if raw_physics["degradation_mode"] == 'healthy' else 0.01,
+        "degradation_perClass_li_plating": 0.95 if raw_physics["degradation_mode"] == 'li_plating' else 0.01,
+        "degradation_perClass_active_material_loss": 0.95 if raw_physics["degradation_mode"] == 'active_material_loss' else 0.01,
+        "degradation_perClass_electrolyte_decomposition": 0.95 if raw_physics["degradation_mode"] == 'electrolyte_decomposition' else 0.01,
+        "degradation_perClass_gas_generation": 0.95 if raw_physics["degradation_mode"] == 'gas_generation' else 0.01,
+        "degradation_perClass_internal_short": 0.95 if raw_physics["degradation_mode"] == 'internal_short' else 0.01,
+        "degradation_entropy": 0.05,
 
         # Rebalancing state
-        "rebalancing_state": "IDLE",
+        "rebalancing_state": "monitoring",
         "rebalancing_selectedAction": "none",
-        "rebalancing_actionReason": "Cell operating within nominal limits",
+        "rebalancing_actionReason": "Nominal telemetry",
         "rebalancing_powerStage_targetCurrent": 0.0,
         "rebalancing_powerStage_actualCurrent": 0.0,
         "rebalancing_powerStage_targetVoltage": 0.0,
@@ -490,9 +887,12 @@ def _generate_fallback_frame() -> Dict[str, Any]:
         "rebalancing_executionTime": 0.0,
 
         # Simulation fields
-        "simulation_soc": 0.65 + random.uniform(-0.05, 0.05),
-        "simulation_excitationAmplitude": 0.5,
-        "simulation_noiseLevel": 0.05,
+        "simulation_soc": raw_physics["simulation_soc"],
+        "simulation_temp_amb": raw_physics["simulation_temp_amb"],
+        "simulation_load_c": raw_physics["simulation_load_c"],
+        "simulation_cycle_count": raw_physics["simulation_cycle_count"],
+        "simulation_noiseLevel": raw_physics["simulation_noiseLevel"],
+        "simulation_excitationAmplitude": raw_physics["simulation_excitationAmplitude"],
         "simulation_stepCount": 0
     }
     diag = DiagnosticFrame.from_dict(frame)

@@ -5,7 +5,7 @@
 | Model Architecture | Parameters | Flash Size | In-Dist Accuracy | Held-Out Accuracy (OOD) | SOH MAE | MCU Latency (STM32/ESP32) | Working SRAM | Energy / Inference |
 |---|---|---|---|---|---|---|---|---|
 | **Rule-Based Heuristic** | — | — | 16.7% | 16.7% | 11.88% | < 5 µs | < 0.1 KB | 0.15 µJ |
-| **Teacher: MultiBranchFusionNet (FP32)** | 860,544 | 3,442.2 KB | 100.0% | 100.0% | 3.75% | 12.5 ms | 1,240 KB | 437.5 µJ |
+| **Teacher: MultiBranchFusionNet (FP32)** | 860,544 | 3,442.2 KB | 100.0% | 100.0% | 2.64% | 12.5 ms | 1,240 KB | 437.5 µJ |
 | **Student: EdgeMultiModalNet (FP32)** | 6,363 | 24.86 KB | 100.0% | 100.0% | 1.27% | 142.0 µs | 1.24 KB | 4.97 µJ |
 | **Edge Student: int8 Quantized C Kernel** | **6,363** | **5.84 KB** | **100.0%** | **100.0%** | **1.32%** | **36.5 µs** | **0.48 KB** | **1.28 µJ** |
 

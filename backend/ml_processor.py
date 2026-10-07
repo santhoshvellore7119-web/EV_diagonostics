@@ -135,7 +135,7 @@ class MLProcessor:
         temp = float(raw_frame.get('thermal_temperature', 25.0))
         r_th = float(2.0 + max(0.0, temp - 25.0) * 0.05)
         c_th = 500.0
-        gas_reverb = bool(attenuation < 0.70 or (temp > 35.0 and attenuation < 0.85))
+        gas_reverb = bool(attenuation <= 0.68 and phase_shift > 0.25)
 
         sampling_rate_hz = 200000.0
         period_s = self.sequence_length / sampling_rate_hz

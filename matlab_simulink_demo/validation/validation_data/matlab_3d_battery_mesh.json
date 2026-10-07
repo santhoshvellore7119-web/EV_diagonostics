@@ -13148,6 +13148,6 @@
     "max_soc_imbalance_pct": 34.0,
     "active_balancing_current_a": 3.0,
     "rebalancing_state": "ACTIVE_BALANCING_ZVS",
-    "zvs_efficiency_pct": 92.4
+    "zvs_efficiency_pct": 98.47
   }
 }

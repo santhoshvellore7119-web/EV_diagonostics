@@ -16,7 +16,7 @@
     "Size_KB": "3,442.2 KB",
     "InDist_Acc": "100.0%",
     "HeldOut_Acc": "100.0%",
-    "SOH_MAE": "3.75%",
+    "SOH_MAE": "2.64%",
     "MCU_Latency": "12.5 ms",
     "SRAM_KB": "1240.0 KB",
     "Energy_uJ": "437.5 uJ"

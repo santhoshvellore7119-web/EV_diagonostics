@@ -6,7 +6,7 @@
 [![React 18](https://img.shields.io/badge/React-18-61dafb.svg)](https://reactjs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Verification](https://img.shields.io/badge/Verification-20%2F20%20Suites%20Passed-brightgreen.svg)](run.py)
-[![Pytest](https://img.shields.io/badge/Tests-78%2F78%20Passing-brightgreen.svg)](tests/)
+[![Pytest](https://img.shields.io/badge/Tests-103%2F103%20Passing-brightgreen.svg)](tests/)
 
 An end-to-end, production-grade diagnostic and closed-loop cell recovery platform for second-life Lithium-ion battery packs. The system fuses **high-frequency electrical impedance**, **10 MHz ultrasonic acoustic pulse-echo**, and **transient thermal telemetry** into a unified deep learning pipeline (`MultiBranchFusionNet`) with cross-modal attention, heteroscedastic uncertainty estimation, and autonomous active rebalancing.
 

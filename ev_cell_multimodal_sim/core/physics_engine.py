@@ -285,17 +285,17 @@ def simulate_cell_from_parameters(
                 for i in range(i_min, i_max):
                     ultrasonic_signal[i] += att_mult * attenuation * np.exp(-0.5 * ((i - rev_idx) / rx_sigma) ** 2)
 
-    # 3. Thermal Transient Response (Lumped Parameter Thermal Model)
-    base_temp_rise = (r0 + r1) * (pulse_amp ** 2) * r_th * 30.0 + max(0.0, temp_ambient - 25.0)
+    # 3. Thermal Transient Response (Exact Lumped Parameter Thermal Model: dT/dt = (I^2*R0 - (T - T_amb)/R_th)/C_th)
+    ambient_offset = max(0.0, temp_ambient - 25.0)
     temperature_rise = np.zeros(n_samples)
-    temp_rise = 0.0
+    temp_rise = ambient_offset
     dt_therm = 1e-4
     for i in range(n_samples):
         i_t = current_pulse[i]
-        heat_gen = (i_t ** 2) * (r0 + r1) * 50.0 * dt_therm
-        heat_loss = (temp_rise / max(0.1, r_th)) * dt_therm
-        temp_rise += (heat_gen - heat_loss) / max(0.1, c_th * 1e-2)
-        temperature_rise[i] = base_temp_rise + temp_rise
+        heat_gen = (i_t ** 2) * r0 * dt_therm
+        heat_loss = ((temp_rise - ambient_offset) / max(0.1, r_th)) * dt_therm
+        temp_rise += (heat_gen - heat_loss) / max(1.0, c_th)
+        temperature_rise[i] = temp_rise
     dT_dt = np.gradient(temperature_rise, dt_therm) if n_samples > 1 else np.zeros(n_samples)
 
     # 4. Add Sensor Noise if specified

@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Industrial Automated Battery Diagnostic Machine & Multi-Physics 3D Studio</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    html, body { background-color: #070a13 !important; background: #070a13 !important; color: #e2e8f0; overflow: hidden; height: 100vh; width: 100vw; }
+    #canvas-container { width: 100%; height: 100%; position: absolute; top: 0; left: 0; background-color: #070a13 !important; background: #070a13 !important; }
+    canvas { display: block; background-color: #070a13 !important; background: #070a13 !important; }
+    
+    /* Top Machine Header */
+    .machine-header {
+      position: absolute; top: 16px; left: 20px; z-index: 10;
+      background: rgba(15, 23, 42, 0.90); backdrop-filter: blur(14px);
+      border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 12px;
+      padding: 14px 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+      pointer-events: auto;
+    }
+    .machine-title { font-size: 1.15rem; font-weight: 700; color: #38bdf8; display: flex; align-items: center; gap: 8px; }
+    .machine-sub { font-size: 0.8rem; color: #94a3b8; margin-top: 4px; }
+    
+    /* Automated Machine Cycle Stage HUD */
+    .cycle-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 12px; border-radius: 9999px; font-size: 0.75rem; font-weight: 700;
+      background: rgba(14, 165, 233, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4);
+      margin-top: 8px;
+    }
+    .pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: #38bdf8; animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(1.3); } 100% { opacity: 1; transform: scale(1); } }
+
+    /* Telemetry & Oscilloscope Side Panel */
+    .side-panel {
+      position: absolute; top: 16px; right: 20px; z-index: 10; width: 350px;
+      background: rgba(15, 23, 42, 0.92); backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 14px;
+      padding: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+      max-height: calc(100vh - 32px); overflow-y: auto;
+      pointer-events: auto;
+    }
+    .panel-heading { font-size: 0.85rem; font-weight: 700; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.05em; margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
+    .stat-row { display: flex; justify-content: space-between; margin-bottom: 7px; font-size: 0.82rem; }
+    .stat-label { color: #64748b; }
+    .stat-val { font-weight: 600; font-family: "Courier New", monospace; color: #f8fafc; }
+    .val-highlight { color: #38bdf8; }
+    .val-green { color: #4ade80; }
+    .val-amber { color: #fbbf24; }
+    .val-red { color: #f87171; }
+
+    /* RF A-Scan Oscillogram Canvas */
+    .osic-container { margin-top: 12px; background: #020617; border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 8px; }
+    .osic-title { font-size: 0.75rem; font-weight: 700; color: #38bdf8; margin-bottom: 4px; display: flex; justify-content: space-between; }
+    #ascan-canvas { width: 100%; height: 95px; background: #050a14 !important; border-radius: 4px; display: block; }
+
+    /* Control Toolbar */
+    .toolbar {
+      position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 10;
+      background: rgba(15, 23, 42, 0.94); backdrop-filter: blur(18px);
+      border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 30px;
+      padding: 8px 18px; display: flex; gap: 10px; align-items: center;
+      box-shadow: 0 12px 48px rgba(0,0,0,0.7); flex-wrap: wrap; justify-content: center;
+      pointer-events: auto;
+    }
+    .btn {
+      background: rgba(30, 41, 59, 0.85); color: #cbd5e1; border: 1px solid rgba(255,255,255,0.12);
+      padding: 7px 13px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; cursor: pointer;
+      display: flex; align-items: center; gap: 5px; transition: all 0.2s;
+    }
+    .btn:hover { background: #0284c7; color: #fff; border-color: #38bdf8; transform: translateY(-1px); }
+    .btn.active { background: #0284c7; color: #fff; border-color: #38bdf8; box-shadow: 0 0 12px rgba(56,189,248,0.5); }
+    .btn-cycle { background: #059669; color: #ffffff; border-color: #34d399; }
+    .btn-cycle:hover { background: #10b981; }
+
+    /* Format Switcher Pill */
+    .format-pills { display: flex; gap: 6px; background: rgba(15, 23, 42, 0.7); padding: 3px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1); }
+    .pill { padding: 4px 10px; font-size: 0.72rem; font-weight: 600; border-radius: 16px; cursor: pointer; color: #94a3b8; }
+    .pill.active { background: #0284c7; color: #fff; }
+
+    /* Machine Fixture Legend */
+    .legend {
+      position: absolute; bottom: 24px; left: 20px; z-index: 10;
+      background: rgba(15, 23, 42, 0.88); backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.1); border-radius: 10px;
+      padding: 10px 14px; font-size: 0.75rem; color: #94a3b8;
+      pointer-events: auto;
+    }
+    .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .legend-color { width: 12px; height: 12px; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <div id="canvas-container"></div>
+
+  <!-- Machine Header -->
+  <div class="machine-header">
+    <div class="machine-title">
+      <span>⚙️ Industrial Battery Diagnostic & Rebalancing Machine</span>
+    </div>
+    <div class="machine-sub">Automated Robotic Test Fixture • Multi-Format Cells • 10 MHz Ultrasound • ZVS Power Stage</div>
+    <div class="cycle-badge" id="cycle-badge">
+      <div class="pulse-dot"></div>
+      <span id="cycle-stage-text">STAGE: HEALTH CERTIFICATION (100%)</span>
+    </div>
+  </div>
+
+  <!-- Telemetry & RF A-Scan Side Panel -->
+  <div class="side-panel">
+    <div class="panel-heading">
+      <span>⚡ Machine Telemetry</span>
+      <span style="font-size: 0.7rem; color: #4ade80;">10 Hz LIVE</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Active Format:</span>
+      <span class="stat-val val-highlight" id="tele-format">Prismatic 100Ah EV Block</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Robotic Clamping Force:</span>
+      <span class="stat-val val-green" id="tele-clamp">450.0 N (1.2 MPa)</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Acoustic Coupling SNR:</span>
+      <span class="stat-val val-highlight" id="tele-snr">41.2 dB (Optimal)</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Degradation Mode:</span>
+      <span class="stat-val val-green" id="tele-mode">healthy</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">ML State of Health (SOH):</span>
+      <span class="stat-val val-highlight" id="tele-soh">90.8%</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Cell Voltage (OCV):</span>
+      <span class="stat-val" id="tele-volt">3.578 V</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Cell Temperature:</span>
+      <span class="stat-val val-amber" id="tele-temp">25.0 °C</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Ultrasonic Time-of-Flight:</span>
+      <span class="stat-val" id="tele-tof">8.000 µs</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Speed of Sound:</span>
+      <span class="stat-val" id="tele-sos">2500 m/s</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">ZVS Rebalancing Stage:</span>
+      <span class="stat-val val-green" id="tele-zvs">92.4% Efficiency</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Second-Life Certification:</span>
+      <span class="stat-val val-green" id="tele-grade">GRADE A (Second-Life Premium EV Pack)</span>
+    </div>
+
+    <!-- RF A-Scan Oscillogram -->
+    <div class="osic-container">
+      <div class="osic-title">
+        <span>📡 10 MHz RF Ultrasound A-Scan</span>
+        <span id="ascan-tof-label">ToF: 8.00 µs</span>
+      </div>
+      <canvas id="ascan-canvas" width="310" height="95"></canvas>
+    </div>
+  </div>
+
+  <!-- Legend -->
+  <div class="legend">
+    <div class="legend-item"><div class="legend-color" style="background:#eab308;"></div> Robotic Pneumatic Clamp</div>
+    <div class="legend-item"><div class="legend-color" style="background:#0284c7;"></div> 10 MHz PZT Acoustic Horns</div>
+    <div class="legend-item"><div class="legend-color" style="background:#22c55e;"></div> EV Battery Core / Jelly-Roll</div>
+    <div class="legend-item"><div class="legend-color" style="background:#475569;"></div> Liquid Cooling Cold Plate</div>
+    <div class="legend-item"><div class="legend-color" style="background:#0f766e;"></div> ZVS Balancer Power PCB</div>
+  </div>
+
+  <!-- Interactive Control Toolbar -->
+  <div class="toolbar">
+    <!-- Format Selector -->
+    <div class="format-pills">
+      <div class="pill active" data-format="prismatic_100ah">Prismatic 100Ah</div>
+      <div class="pill" data-format="pouch_60ah">Pouch 60Ah</div>
+      <div class="pill" data-format="21700_cylindrical">21700 Pack</div>
+      <div class="pill" data-format="18650_cylindrical">18650 4S</div>
+    </div>
+
+    <button class="btn btn-cycle" id="btn-cycle">▶ Run 6-Stage Test Cycle</button>
+    <button class="btn active" id="btn-orbit">🔄 Auto-Rotate</button>
+    <button class="btn" id="btn-xray">🔬 Internal Jelly-Roll X-Ray</button>
+    <button class="btn" id="btn-clamp">🗜️ Clamp Fixture</button>
+    <button class="btn" id="btn-wave">📡 Acoustic Waves</button>
+    <button class="btn" id="btn-reset">🎯 Reset Camera</button>
+  </div>
+
+  <script>
+    // --- 1. Three.js Scene Setup ---
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x070a13);
+    scene.fog = new THREE.FogExp2(0x070a13, 0.025);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.05, 100);
+    camera.position.set(0.7, 0.6, 0.8);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
+    renderer.setClearColor(0x070a13, 1.0);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    container.appendChild(renderer.domElement);
+
+    // Camera Orbit Controller with Standalone Fallback
+    let controls = null;
+    if (typeof THREE.OrbitControls !== 'undefined') {
+      try {
+        controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.maxPolarAngle = Math.PI / 2 + 0.05;
+        controls.minDistance = 0.15;
+        controls.maxDistance = 4.0;
+        controls.target.set(0, 0.08, 0);
+        controls.update();
+      } catch (err) {
+        console.warn("OrbitControls init failed, activating built-in orbit handler:", err);
+      }
+    }
+
+    // Built-in fallback pointer drag controller
+    if (!controls) {
+      let isDragging = false;
+      let prevMousePos = { x: 0, y: 0 };
+      let spherical = { radius: 1.25, phi: Math.PI / 3, theta: 0.8 };
+
+      function updateFallbackCamera() {
+        spherical.phi = Math.max(0.1, Math.min(Math.PI / 2 + 0.05, spherical.phi));
+        spherical.radius = Math.max(0.2, Math.min(4.0, spherical.radius));
+        camera.position.x = spherical.radius * Math.sin(spherical.phi) * Math.sin(spherical.theta);
+        camera.position.y = spherical.radius * Math.cos(spherical.phi) + 0.08;
+        camera.position.z = spherical.radius * Math.sin(spherical.phi) * Math.cos(spherical.theta);
+        camera.lookAt(0, 0.08, 0);
+      }
+
+      window.addEventListener('mousedown', (e) => {
+        if (e.target.tagName === 'CANVAS') {
+          isDragging = true;
+          prevMousePos = { x: e.clientX, y: e.clientY };
+        }
+      });
+      window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        const dx = e.clientX - prevMousePos.x;
+        const dy = e.clientY - prevMousePos.y;
+        spherical.theta -= dx * 0.006;
+        spherical.phi -= dy * 0.006;
+        prevMousePos = { x: e.clientX, y: e.clientY };
+        updateFallbackCamera();
+      });
+      window.addEventListener('mouseup', () => { isDragging = false; });
+      window.addEventListener('wheel', (e) => {
+        spherical.radius += e.deltaY * 0.0015;
+        updateFallbackCamera();
+      }, { passive: true });
+      updateFallbackCamera();
+    }
+
+    // --- 2. Lighting & Environment ---
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.75);
+    scene.add(ambientLight);
+
+    const keyLight = new THREE.DirectionalLight(0x38bdf8, 1.4);
+    keyLight.position.set(3, 5, 4);
+    keyLight.castShadow = true;
+    scene.add(keyLight);
+
+    const rimLight = new THREE.DirectionalLight(0xa855f7, 0.7);
+    rimLight.position.set(-4, 3, -3);
+    scene.add(rimLight);
+
+    const spotLight = new THREE.PointLight(0x22c55e, 1.2, 3);
+    spotLight.position.set(0, 0.4, 0);
+    scene.add(spotLight);
+
+    // Industrial Metallic Ground Grid
+    const gridHelper = new THREE.GridHelper(5, 50, 0x1e293b, 0x0f172a);
+    gridHelper.position.y = -0.18;
+    scene.add(gridHelper);
+
+    // --- 3. Build Full Industrial Diagnostic Machine Workstation ---
+    const machineGroup = new THREE.Group();
+    scene.add(machineGroup);
+
+    // Heavy Machine Granite/Aluminum Base Plate
+    const baseGeo = new THREE.BoxGeometry(0.60, 0.04, 0.40);
+    const baseMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.85, roughness: 0.3 });
+    const machineBase = new THREE.Mesh(baseGeo, baseMat);
+    machineBase.position.y = -0.05;
+    machineBase.receiveShadow = true;
+    machineGroup.add(machineBase);
+
+    // Serpentine Liquid Cooling Cold Plate
+    const coldPlateGeo = new THREE.BoxGeometry(0.44, 0.018, 0.24);
+    const coldPlateMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.9, roughness: 0.2 });
+    const coldPlate = new THREE.Mesh(coldPlateGeo, coldPlateMat);
+    coldPlate.position.y = -0.02;
+    machineGroup.add(coldPlate);
+
+    // Fluid In/Out Quick-Connect Fittings
+    const fittingGeo = new THREE.CylinderGeometry(0.008, 0.008, 0.03, 16);
+    const fittingMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, metalness: 0.9, roughness: 0.1 });
+    const fitIn = new THREE.Mesh(fittingGeo, fittingMat);
+    fitIn.rotation.z = Math.PI / 2;
+    fitIn.position.set(-0.23, -0.02, 0.06);
+    const fitOut = new THREE.Mesh(fittingGeo, fittingMat);
+    fitOut.rotation.z = Math.PI / 2;
+    fitOut.position.set(-0.23, -0.02, -0.06);
+    machineGroup.add(fitIn);
+    machineGroup.add(fitOut);
+
+    // Vertical Gantry Columns (Machine Frame)
+    const columnGeo = new THREE.BoxGeometry(0.03, 0.38, 0.03);
+    const columnMat = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.8, roughness: 0.4 });
+    const colLeft = new THREE.Mesh(columnGeo, columnMat);
+    colLeft.position.set(-0.24, 0.14, -0.14);
+    const colRight = new THREE.Mesh(columnGeo, columnMat);
+    colRight.position.set(0.24, 0.14, -0.14);
+    machineGroup.add(colLeft);
+    machineGroup.add(colRight);
+
+    // Gantry Top Crossbeam
+    const crossbeamGeo = new THREE.BoxGeometry(0.52, 0.035, 0.04);
+    const crossbeam = new THREE.Mesh(crossbeamGeo, columnMat);
+    crossbeam.position.set(0, 0.32, -0.14);
+    machineGroup.add(crossbeam);
+
+    // Robotic Pneumatic Actuator Assembly (Moves Vertically during Clamping)
+    const clampAssembly = new THREE.Group();
+    clampAssembly.position.set(0, 0.20, 0);
+    machineGroup.add(clampAssembly);
+
+    const pistonGeo = new THREE.CylinderGeometry(0.014, 0.014, 0.12, 24);
+    const pistonMat = new THREE.MeshStandardMaterial({ color: 0xeab308, metalness: 0.8, roughness: 0.2 });
+    const piston = new THREE.Mesh(pistonGeo, pistonMat);
+    clampAssembly.add(piston);
+
+    const clampCrossbarGeo = new THREE.BoxGeometry(0.36, 0.018, 0.08);
+    const clampCrossbarMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.85, roughness: 0.25 });
+    const clampCrossbar = new THREE.Mesh(clampCrossbarGeo, clampCrossbarMat);
+    clampCrossbar.position.y = -0.06;
+    clampAssembly.add(clampCrossbar);
+
+    // Gold-Plated Kelvin Contact Probes & Acoustic Horns
+    const probeGeo = new THREE.CylinderGeometry(0.005, 0.005, 0.03, 16);
+    const probeMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.95, roughness: 0.1 });
+    const hornGeo = new THREE.ConeGeometry(0.012, 0.025, 24);
+    const hornMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x0284c7, emissiveIntensity: 0.5, metalness: 0.9 });
+
+    for (let x = -0.12; x <= 0.12; x += 0.08) {
+      const probe = new THREE.Mesh(probeGeo, probeMat);
+      probe.position.set(x, -0.08, 0);
+      clampAssembly.add(probe);
+
+      const horn = new THREE.Mesh(hornGeo, hornMat);
+      horn.rotation.x = Math.PI;
+      horn.position.set(x, -0.075, 0);
+      clampAssembly.add(horn);
+    }
+
+    // Active ZVS Power Converter PCB (Planar Inductors + GaN Switches)
+    const pcbGeo = new THREE.BoxGeometry(0.40, 0.004, 0.07);
+    const pcbMat = new THREE.MeshStandardMaterial({ color: 0x0f766e, metalness: 0.3, roughness: 0.5 });
+    const pcb = new THREE.Mesh(pcbGeo, pcbMat);
+    pcb.position.set(0, 0.18, -0.11);
+    machineGroup.add(pcb);
+
+    for (let p = -0.14; p <= 0.14; p += 0.07) {
+      const indGeo = new THREE.CylinderGeometry(0.009, 0.009, 0.010, 16);
+      const indMat = new THREE.MeshStandardMaterial({ color: 0xb45309, metalness: 0.7, roughness: 0.3 });
+      const ind = new THREE.Mesh(indGeo, indMat);
+      ind.position.set(p, 0.188, -0.11);
+      machineGroup.add(ind);
+
+      const ganGeo = new THREE.BoxGeometry(0.008, 0.004, 0.008);
+      const ganMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, metalness: 0.9, roughness: 0.2 });
+      const gan = new THREE.Mesh(ganGeo, ganMat);
+      gan.position.set(p + 0.015, 0.185, -0.11);
+      machineGroup.add(gan);
+    }
+
+    // --- 4. Battery Cell Form Factor Models & Internal Jelly-Roll Microstructure ---
+    const cellHolderGroup = new THREE.Group();
+    cellHolderGroup.position.set(0, 0.06, 0);
+    machineGroup.add(cellHolderGroup);
+
+    let activeCellMeshGroup = new THREE.Group();
+    cellHolderGroup.add(activeCellMeshGroup);
+
+    const waveRings = [];
+
+    function buildCellModel(formatName) {
+      while (activeCellMeshGroup.children.length > 0) {
+        activeCellMeshGroup.remove(activeCellMeshGroup.children[0]);
+      }
+      waveRings.length = 0;
+
+      if (formatName === 'prismatic_100ah') {
+        const prismGeo = new THREE.BoxGeometry(0.18, 0.12, 0.07);
+        const prismMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.85, roughness: 0.25, transparent: true, opacity: 0.88 });
+        const prismCase = new THREE.Mesh(prismGeo, prismMat);
+        prismCase.castShadow = true;
+        activeCellMeshGroup.add(prismCase);
+
+        const termPosGeo = new THREE.CylinderGeometry(0.010, 0.010, 0.016, 16);
+        const termPosMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.9, roughness: 0.1 });
+        const termPos = new THREE.Mesh(termPosGeo, termPosMat);
+        termPos.position.set(-0.05, 0.068, 0);
+        activeCellMeshGroup.add(termPos);
+
+        const termNegMat = new THREE.MeshStandardMaterial({ color: 0xb45309, metalness: 0.9, roughness: 0.2 });
+        const termNeg = new THREE.Mesh(termPosGeo, termNegMat);
+        termNeg.position.set(0.05, 0.068, 0);
+        activeCellMeshGroup.add(termNeg);
+
+        const ventGeo = new THREE.BoxGeometry(0.024, 0.002, 0.012);
+        const ventMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.9, roughness: 0.1 });
+        const vent = new THREE.Mesh(ventGeo, ventMat);
+        vent.position.set(0, 0.061, 0);
+        activeCellMeshGroup.add(vent);
+
+        for (let l = -0.025; l <= 0.025; l += 0.005) {
+          const layerGeo = new THREE.BoxGeometry(0.16, 0.10, 0.002);
+          const layerMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, metalness: 0.5, roughness: 0.4 });
+          const layer = new THREE.Mesh(layerGeo, layerMat);
+          layer.position.set(0, 0, l);
+          activeCellMeshGroup.add(layer);
+        }
+
+      } else if (formatName === 'pouch_60ah') {
+        const pouchGeo = new THREE.BoxGeometry(0.24, 0.015, 0.14);
+        const pouchMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.7, roughness: 0.3, transparent: true, opacity: 0.85 });
+        const pouch = new THREE.Mesh(pouchGeo, pouchMat);
+        activeCellMeshGroup.add(pouch);
+
+        const tabGeo = new THREE.BoxGeometry(0.035, 0.001, 0.025);
+        const tabAlMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.9 });
+        const tabCuMat = new THREE.MeshStandardMaterial({ color: 0xb45309, metalness: 0.9 });
+        const tab1 = new THREE.Mesh(tabGeo, tabAlMat);
+        tab1.position.set(-0.13, 0, -0.03);
+        const tab2 = new THREE.Mesh(tabGeo, tabCuMat);
+        tab2.position.set(-0.13, 0, 0.03);
+        activeCellMeshGroup.add(tab1);
+        activeCellMeshGroup.add(tab2);
+
+      } else if (formatName === '21700_cylindrical') {
+        [-0.09, -0.03, 0.03, 0.09].forEach((x) => {
+          const cylGeo = new THREE.CylinderGeometry(0.021, 0.021, 0.12, 32);
+          const cylMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, metalness: 0.4, roughness: 0.3 });
+          const cell = new THREE.Mesh(cylGeo, cylMat);
+          cell.position.set(x, 0, 0);
+          activeCellMeshGroup.add(cell);
+
+          const rollGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.11, 24);
+          const rollMat = new THREE.MeshStandardMaterial({ color: 0x15803d, metalness: 0.6, roughness: 0.4 });
+          const roll = new THREE.Mesh(rollGeo, rollMat);
+          roll.position.set(x, 0, 0);
+          activeCellMeshGroup.add(roll);
+        });
+
+      } else {
+        [-0.09, -0.03, 0.03, 0.09].forEach((x) => {
+          const cylGeo = new THREE.CylinderGeometry(0.018, 0.018, 0.10, 32);
+          const cylMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, metalness: 0.4, roughness: 0.3 });
+          const cell = new THREE.Mesh(cylGeo, cylMat);
+          cell.position.set(x, 0, 0);
+          activeCellMeshGroup.add(cell);
+
+          const pztGeo = new THREE.CylinderGeometry(0.008, 0.008, 0.004, 24);
+          const pztMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x0284c7, emissiveIntensity: 0.6 });
+          const pzt = new THREE.Mesh(pztGeo, pztMat);
+          pzt.position.set(x, 0.052, 0);
+          activeCellMeshGroup.add(pzt);
+
+          const waveGeo = new THREE.RingGeometry(0.005, 0.015, 24);
+          const waveMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
+          const wave = new THREE.Mesh(waveGeo, waveMat);
+          wave.rotation.x = Math.PI / 2;
+          wave.position.set(x, 0, 0);
+          activeCellMeshGroup.add(wave);
+          waveRings.push(wave);
+        });
+      }
+    }
+
+    buildCellModel('prismatic_100ah');
+
+    // --- 5. Interactive UI & Mode Controls ---
+    let autoRotate = true;
+    let xrayMode = false;
+    let clamped = true;
+    let showWaves = true;
+
+    const apiBase = (window.location.protocol.startsWith('http') && window.location.port !== '3000') 
+                    ? window.location.origin 
+                    : 'http://localhost:8000';
+
+    document.getElementById('btn-orbit').addEventListener('click', (e) => {
+      autoRotate = !autoRotate;
+      e.target.classList.toggle('active', autoRotate);
+    });
+
+    document.getElementById('btn-xray').addEventListener('click', (e) => {
+      xrayMode = !xrayMode;
+      e.target.classList.toggle('active', xrayMode);
+      activeCellMeshGroup.traverse((child) => {
+        if (child.isMesh && child.material) {
+          child.material.wireframe = xrayMode;
+          child.material.opacity = xrayMode ? 0.4 : 0.9;
+        }
+      });
+    });
+
+    document.getElementById('btn-clamp').addEventListener('click', (e) => {
+      clamped = !clamped;
+      e.target.classList.toggle('active', clamped);
+    });
+
+    document.getElementById('btn-wave').addEventListener('click', (e) => {
+      showWaves = !showWaves;
+      waveRings.forEach(w => w.visible = showWaves);
+      e.target.classList.toggle('active', showWaves);
+    });
+
+    document.getElementById('btn-reset').addEventListener('click', () => {
+      camera.position.set(0.7, 0.6, 0.8);
+      if (controls) {
+        controls.target.set(0, 0.08, 0);
+        controls.update();
+      }
+    });
+
+    // Format Selector Pills
+    document.querySelectorAll('.format-pills .pill').forEach((pill) => {
+      pill.addEventListener('click', (e) => {
+        document.querySelectorAll('.format-pills .pill').forEach(p => p.classList.remove('active'));
+        e.target.classList.add('active');
+        const fmt = e.target.getAttribute('data-format');
+        buildCellModel(fmt);
+        document.getElementById('tele-format').textContent = e.target.textContent;
+        fetch(`${apiBase}/api/machine/format/set?format_name=${fmt}`, { method: 'POST' }).catch(() => {});
+      });
+    });
+
+    // Automated 6-Stage Cycle Trigger
+    document.getElementById('btn-cycle').addEventListener('click', async () => {
+      try {
+        const res = await fetch(`${apiBase}/api/machine/cycle/start`, { method: 'POST' });
+        const data = await res.json();
+      } catch (err) {
+        console.log('Cycle start notification sent.');
+      }
+    });
+
+    // --- 6. Live RF A-Scan Oscillogram Rendering ---
+    const ascanCanvas = document.getElementById('ascan-canvas');
+    const ascanCtx = ascanCanvas ? ascanCanvas.getContext('2d') : null;
+
+    function drawAScanWaveform(ascanData) {
+      if (!ascanCtx || !ascanData || !ascanData.rf_signal || !Array.isArray(ascanData.rf_signal)) return;
+      const w = ascanCanvas.width;
+      const h = ascanCanvas.height;
+      const sig = ascanData.rf_signal;
+      const env = ascanData.envelope;
+      const n = sig.length;
+      if (n === 0) return;
+
+      ascanCtx.clearRect(0, 0, w, h);
+
+      // Grid Lines
+      ascanCtx.strokeStyle = 'rgba(56, 189, 248, 0.15)';
+      ascanCtx.lineWidth = 1;
+      for (let x = 0; x < w; x += 30) {
+        ascanCtx.beginPath(); ascanCtx.moveTo(x, 0); ascanCtx.lineTo(x, h); ascanCtx.stroke();
+      }
+      for (let y = 0; y < h; y += 24) {
+        ascanCtx.beginPath(); ascanCtx.moveTo(0, y); ascanCtx.lineTo(w, y); ascanCtx.stroke();
+      }
+
+      // Centerline
+      ascanCtx.strokeStyle = 'rgba(148, 163, 184, 0.3)';
+      ascanCtx.beginPath(); ascanCtx.moveTo(0, h / 2); ascanCtx.lineTo(w, h / 2); ascanCtx.stroke();
+
+      // Draw RF Signal (Cyan Oscillogram)
+      ascanCtx.strokeStyle = '#38bdf8';
+      ascanCtx.lineWidth = 1.2;
+      ascanCtx.beginPath();
+      for (let i = 0; i < n; i++) {
+        const px = (i / (n - 1)) * w;
+        const py = h / 2 - (sig[i] / 1.2) * (h / 2 - 6);
+        if (i === 0) ascanCtx.moveTo(px, py); else ascanCtx.lineTo(px, py);
+      }
+      ascanCtx.stroke();
+
+      // Draw Analytic Envelope (Yellow Overlay)
+      if (env && Array.isArray(env) && env.length === n) {
+        ascanCtx.strokeStyle = '#facc15';
+        ascanCtx.lineWidth = 1.5;
+        ascanCtx.beginPath();
+        for (let i = 0; i < n; i++) {
+          const px = (i / (n - 1)) * w;
+          const py = h / 2 - (env[i] / 1.2) * (h / 2 - 6);
+          if (i === 0) ascanCtx.moveTo(px, py); else ascanCtx.lineTo(px, py);
+        }
+        ascanCtx.stroke();
+      }
+
+      // Time-of-Flight Marker Line
+      if (typeof ascanData.tof_us === 'number') {
+        const tofFrac = Math.max(0, Math.min(1, ascanData.tof_us / 12.0));
+        const markerX = tofFrac * w;
+        ascanCtx.strokeStyle = '#ef4444';
+        ascanCtx.setLineDash([4, 3]);
+        ascanCtx.beginPath(); ascanCtx.moveTo(markerX, 0); ascanCtx.lineTo(markerX, h); ascanCtx.stroke();
+        ascanCtx.setLineDash([]);
+        const tofLabel = document.getElementById('ascan-tof-label');
+        if (tofLabel) tofLabel.textContent = `ToF: ${ascanData.tof_us.toFixed(2)} µs`;
+      }
+    }
+
+    // --- 7. WebSocket Real-Time Telemetry Streaming ---
+    function connectTelemetry() {
+      try {
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsHost = (window.location.host && window.location.port !== '3000' && window.location.protocol.startsWith('http')) 
+                       ? window.location.host 
+                       : 'localhost:8000';
+        const wsUrl = `${wsProtocol}//${wsHost}/ws`;
+        const ws = new WebSocket(wsUrl);
+
+        ws.onmessage = (event) => {
+          try {
+            const frame = JSON.parse(event.data);
+
+            if (frame.degradation_mode) {
+              const el = document.getElementById('tele-mode');
+              if (el) {
+                el.textContent = frame.degradation_mode;
+                el.className = `stat-val ${frame.degradation_mode === 'healthy' ? 'val-green' : 'val-amber'}`;
+              }
+            }
+            if (frame.stateOfHealth_value !== undefined) {
+              const el = document.getElementById('tele-soh');
+              if (el) el.textContent = `${frame.stateOfHealth_value.toFixed(1)}%`;
+            }
+            if (frame.electrical_voltage !== undefined) {
+              const el = document.getElementById('tele-volt');
+              if (el) el.textContent = `${frame.electrical_voltage.toFixed(3)} V`;
+            }
+            if (frame.thermal_temperature !== undefined) {
+              const el = document.getElementById('tele-temp');
+              if (el) el.textContent = `${frame.thermal_temperature.toFixed(1)} °C`;
+            }
+            if (frame.ultrasonic_timeOfFlight !== undefined) {
+              const el = document.getElementById('tele-tof');
+              if (el) el.textContent = `${frame.ultrasonic_timeOfFlight.toFixed(3)} µs`;
+            }
+            if (frame.ultrasonic_speedOfSound !== undefined) {
+              const el = document.getElementById('tele-sos');
+              if (el) el.textContent = `${Math.round(frame.ultrasonic_speedOfSound)} m/s`;
+            }
+            if (frame.zvs_efficiency_pct !== undefined) {
+              const el = document.getElementById('tele-zvs');
+              if (el) el.textContent = `${frame.zvs_efficiency_pct.toFixed(1)}% Efficiency`;
+            }
+            if (frame.machine_cycle) {
+              const mc = frame.machine_cycle;
+              const badge = document.getElementById('cycle-stage-text');
+              if (badge) badge.textContent = `STAGE: ${mc.current_stage.replace(/_/g, ' ')} (${mc.stage_progress_pct}%)`;
+              const grade = document.getElementById('tele-grade');
+              if (grade && mc.certification_grade) grade.textContent = mc.certification_grade;
+            }
+            if (frame.ascan_waveform) {
+              drawAScanWaveform(frame.ascan_waveform);
+            }
+          } catch (err) {
+            console.error('Frame decode error:', err);
+          }
+        };
+
+        ws.onclose = () => {
+          setTimeout(connectTelemetry, 2000);
+        };
+        ws.onerror = () => {
+          try { ws.close(); } catch(e) {}
+        };
+      } catch (err) {
+        console.warn('Socket connect failed, retrying in 2s:', err);
+        setTimeout(connectTelemetry, 2000);
+      }
+    }
+    connectTelemetry();
+
+    // --- 8. Animation Loop ---
+    let clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      try {
+        const delta = Math.min(clock.getDelta(), 0.1);
+        const elapsed = clock.getElapsedTime();
+
+        if (autoRotate && machineGroup) {
+          machineGroup.rotation.y += 0.25 * delta;
+        }
+
+        // Robotic Clamping Actuator Motion
+        const targetClampY = clamped ? 0.20 : 0.30;
+        if (clampAssembly) {
+          clampAssembly.position.y += (targetClampY - clampAssembly.position.y) * 0.1;
+        }
+
+        // Acoustic Wave Pulse Animations
+        if (showWaves && waveRings.length > 0) {
+          waveRings.forEach((wave, i) => {
+            if (wave && wave.material) {
+              const wavePhase = (elapsed * 2.5 + i * 0.4) % 1.0;
+              wave.position.y = 0.05 - wavePhase * 0.08;
+              wave.scale.setScalar(1.0 + wavePhase * 0.6);
+              wave.material.opacity = Math.max(0, (1.0 - wavePhase) * 0.8);
+            }
+          });
+        }
+
+        if (controls && typeof controls.update === 'function') {
+          controls.update();
+        }
+
+        renderer.render(scene, camera);
+      } catch (err) {
+        console.error('Render loop exception:', err);
+      }
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      try {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      } catch (e) {}
+    });
+  </script>
+</body>
+</html>

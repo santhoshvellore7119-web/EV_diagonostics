@@ -31,6 +31,11 @@ try:
 except ImportError:
     from ev_cell_multimodal_sim.core.physics_engine import DEGRADATION_PHYSICS_PARAMS, simulate_cell_from_parameters
 
+try:
+    from backend.efficiency_benchmark import calculate_rebalancing_efficiency
+except ImportError:
+    calculate_rebalancing_efficiency = None
+
 
 class EVBattery3DSimulator:
     def __init__(self, headless=False):
@@ -653,6 +658,17 @@ class EVBattery3DSimulator:
             float(base_temp + (18.5 if self.degradation_mode == 'internal_short' else 2.8))
         ]
 
+        if i_bal > 0.05 and calculate_rebalancing_efficiency is not None:
+            eff_metrics = calculate_rebalancing_efficiency(
+                i_transfer_a=i_bal,
+                v_source_v=cell_voltages[0],
+                v_target_v=cell_voltages[3],
+                zvs_enabled=True
+            )
+            zvs_eff_pct = float(eff_metrics['efficiency_pct'])
+        else:
+            zvs_eff_pct = 0.0
+
         return {
             'pack_voltage_v': pack_voltage,
             'cell_voltages_v': cell_voltages,
@@ -661,7 +677,7 @@ class EVBattery3DSimulator:
             'max_soc_imbalance_pct': float(soc_delta_max * 100.0),
             'active_balancing_current_a': i_bal,
             'rebalancing_state': rebal_state,
-            'zvs_efficiency_pct': 92.4 if i_bal > 0.2 else 0.0
+            'zvs_efficiency_pct': zvs_eff_pct
         }
 
     def export_3d_state_dict(self):

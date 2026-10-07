@@ -5,6 +5,7 @@ export interface DiagnosticFrame {
   timestamp: number;
   frameId: string;
   source: 'live' | 'simulink' | '3d' | 'gazebo';
+  data_origin?: string;
   cellId: string;
   packId?: string;
 
@@ -45,8 +46,9 @@ export interface DiagnosticFrame {
   degradation_perClass_internal_short: number;
   degradation_entropy: number;
 
-  // Rebalancing state
+  // Rebalancing state & Power stage
   rebalancing_state: string;
+  rebalancing_active?: boolean;
   rebalancing_selectedAction: string;
   rebalancing_actionReason: string;
   rebalancing_powerStage_targetCurrent: number;
@@ -55,6 +57,7 @@ export interface DiagnosticFrame {
   rebalancing_powerStage_actualVoltage: number;
   rebalancing_powerStage_pwmDutyCycle: number;
   rebalancing_executionTime: number;
+  zvs_efficiency_pct?: number;
 
   // Simulation fields (optional)
   simulation_soc?: number;
@@ -63,16 +66,24 @@ export interface DiagnosticFrame {
   simulation_stepCount?: number;
 }
 
-interface DiagnosticFrameState {
+export interface DiagnosticFrameState {
   frame: DiagnosticFrame | null;
+  history: DiagnosticFrame[];
+  maxHistorySize: number;
+  isPaused: boolean;
+  scrubIndex: number | null;
   loading: boolean;
   error: string | null;
 }
 
 const initialState: DiagnosticFrameState = {
   frame: null,
+  history: [],
+  maxHistorySize: 300,
+  isPaused: false,
+  scrubIndex: null,
   loading: false,
-  error: null
+  error: null,
 };
 
 export const diagnosticFrameSlice = createSlice({
@@ -80,7 +91,34 @@ export const diagnosticFrameSlice = createSlice({
   initialState,
   reducers: {
     setFrame: (state, action: PayloadAction<DiagnosticFrame>) => {
-      state.frame = action.payload;
+      // Append to ring buffer
+      state.history.push(action.payload);
+      if (state.history.length > state.maxHistorySize) {
+        state.history.shift();
+      }
+      // If not paused or scrubbing, update active frame
+      if (!state.isPaused && state.scrubIndex === null) {
+        state.frame = action.payload;
+      }
+    },
+    setScrubIndex: (state, action: PayloadAction<number | null>) => {
+      state.scrubIndex = action.payload;
+      if (action.payload !== null && action.payload >= 0 && action.payload < state.history.length) {
+        state.frame = state.history[action.payload];
+      } else if (action.payload === null && state.history.length > 0) {
+        state.frame = state.history[state.history.length - 1];
+      }
+    },
+    setIsPaused: (state, action: PayloadAction<boolean>) => {
+      state.isPaused = action.payload;
+      if (!action.payload && state.history.length > 0) {
+        state.scrubIndex = null;
+        state.frame = state.history[state.history.length - 1];
+      }
+    },
+    clearHistory: (state) => {
+      state.history = [];
+      state.scrubIndex = null;
     },
     setLoading: (state, action: PayloadAction<boolean>) => {
       state.loading = action.payload;
@@ -91,6 +129,6 @@ export const diagnosticFrameSlice = createSlice({
   },
 });
 
-export const { setFrame, setLoading, setError } = diagnosticFrameSlice.actions;
+export const { setFrame, setScrubIndex, setIsPaused, clearHistory, setLoading, setError } = diagnosticFrameSlice.actions;
 
 export default diagnosticFrameSlice.reducer;

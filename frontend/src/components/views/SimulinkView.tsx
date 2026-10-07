@@ -35,6 +35,57 @@ const SimulinkView: React.FC = () => {
         </div>
       </div>
 
+      <div style={{
+        margin: '12px 0 16px 0',
+        padding: '12px 16px',
+        background: 'rgba(2, 132, 199, 0.12)',
+        border: '1px solid rgba(56, 189, 248, 0.4)',
+        borderRadius: '8px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '10px'
+      }}>
+        <div>
+          <div style={{ fontWeight: 700, color: '#38bdf8', fontSize: '0.9rem' }}>
+            ⚡ Direct Simulink & MATLAB Digital Twin Link
+          </div>
+          <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '2px' }}>
+            Model: <code>ev_cell_digital_twin.slx</code> (2-RC ECM + Acoustic Wave + Lumped Thermal)
+          </div>
+        </div>
+        <button
+          style={{
+            padding: '8px 16px',
+            background: '#0284c7',
+            color: '#ffffff',
+            border: 'none',
+            borderRadius: '6px',
+            fontWeight: 700,
+            fontSize: '0.82rem',
+            cursor: 'pointer',
+            boxShadow: '0 2px 8px rgba(2, 132, 199, 0.4)'
+          }}
+          onClick={async () => {
+            try {
+              const res = await fetch('http://localhost:8000/api/simulink/open', { method: 'POST' });
+              const data = await res.json();
+              if (data.launched_locally) {
+                alert('Launching MATLAB & Simulink model (ev_cell_digital_twin.slx)...');
+              } else {
+                navigator.clipboard?.writeText(data.matlab_command || "run('matlab_simulink_demo/launch_simulink.m');");
+                alert('MATLAB launch command copied to clipboard!\nIn MATLAB Command Window run:\n' + (data.matlab_command || "run('matlab_simulink_demo/launch_simulink.m');"));
+              }
+            } catch (e) {
+              alert("To open in MATLAB, run in MATLAB Command Window:\nrun('matlab_simulink_demo/launch_simulink.m');");
+            }
+          }}
+        >
+          🚀 Open in MATLAB / Simulink
+        </button>
+      </div>
+
       <div className="view-content">
         <div className="data-section electrical">
           <h3>Electrical</h3>
