@@ -301,7 +301,7 @@ class EVBattery3DSimulator:
 
         # Electrical ECM calculations
         i_pulse = float(self.params.get('pulse_amplitude_a', 0.5))
-        ocv = float(3.0 + 1.2 * np.clip(self.soc, 0.0, 1.0))
+        ocv = float(3.0 + 0.5 * np.clip(self.soc, 0.0, 1.0))
         voltage = float(ocv - i_pulse * r0 + np.random.normal(0, 0.002 * noise_factor))
         current = float(i_pulse + np.random.normal(0, 0.005 * noise_factor))
         power = float(voltage * current)

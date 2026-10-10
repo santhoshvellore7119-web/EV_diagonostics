@@ -42,7 +42,7 @@ def test_live_pipeline_sweep_all_modes():
                 raw_frame = {
                     'source': '3d',
                     'cellId': f'CELL_{mode_name.upper()}',
-                    'electrical_voltage': float(3.0 + 1.2 * soc - 0.5 * phys['r0']),
+                    'electrical_voltage': float(3.0 + 0.5 * soc - 0.5 * phys['r0']),
                     'electrical_current': 0.50,
                     'electrical_resistance': float(phys['r0']),
                     'ultrasonic_timeOfFlight': float((2 * 0.01 / phys['sos']) * 1e6),

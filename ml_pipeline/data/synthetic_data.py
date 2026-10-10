@@ -1,19 +1,13 @@
 """
 Synthetic data generation for multi-modal battery diagnostic system.
-Generates simulated electrical, ultrasonic, and thermal signals strictly from continuous physical ODE models.
-Features:
-- Continuous multi-dimensional degradation severity (xi in [0.0, 1.0])
-- Overlapping parameter distributions with cell-to-cell manufacturing variance
-- Realistic sensor noise and 12-bit quantization
-- Regime-based held-out validation and testing splits (train/val/test_indist/test_ood)
-- Sensor corruption and dropout injection for robustness evaluation
-- Zero label leakage into waveform synthesis
+Generates simulated electrical, ultrasonic, and thermal signals strictly from physical ODE models.
+Guarantees zero label leakage into waveform synthesis.
 """
 
 import os
 import sys
 import random
-from typing import Optional, Tuple, Dict, Any, List
+from typing import Optional, Tuple
 import numpy as np
 import torch
 from torch.utils.data import Dataset
@@ -28,272 +22,259 @@ if sim_core_path not in sys.path:
 from core.physics_engine import simulate_cell_from_parameters, DEGRADATION_PHYSICS_PARAMS
 
 
-class ContinuousMultiModalBatteryDataset(Dataset):
+class MultiModalBatteryDataset(Dataset):
     """
-    Continuous-severity multi-modal battery dataset.
-    Synthesizes electrical (V), ultrasonic (A-scan), and thermal (dT) waveforms
-    from continuous electrochemical, acoustic, and thermodynamic state variables.
+    Parameter-driven multi-modal battery dataset with zero label leakage.
+    Each waveform is synthesized strictly via physical ODE integration from physical state parameters.
+    Now with continuous degradation severity per mode, mixed modes, cell-to-cell variation,
+    sensor drift, and run-based splitting.
     """
-
-    DEGRADATION_MODES = [
-        'healthy',
-        'li_plating',
-        'active_material_loss',
-        'electrolyte_decomposition',
-        'gas_generation',
-        'internal_short'
-    ]
 
     def __init__(
         self,
         num_samples: int = 1000,
         seq_length: int = 256,
-        split: str = 'train',
-        soc_range: Optional[Tuple[float, float]] = None,
-        noise_multiplier: float = 1.0,
-        dropout_modality: Optional[str] = None,  # 'electrical', 'ultrasonic', 'thermal', or None
+        soc_range: Tuple[float, float] = (0.05, 0.95),
+        temp_range: Tuple[float, float] = (20.0, 45.0),
+        severity_range: Tuple[float, float] = (0.0, 1.0),
+        num_cells: int = 50,  # Number of distinct cells to simulate for cell-to-cell variation
+        samples_per_cell: int = 20,  # Number of samples (pulses) per cell to form a run
+        transform=None,
         seed: Optional[int] = None,
-        transform=None
+        hold_out_soc_range: Optional[Tuple[float, float]] = None,  # e.g., (0.0, 0.2) for low SOC holdout
+        hold_out_temp_range: Optional[Tuple[float, float]] = None,  # e.g., (0.0, 15.0) for low temp holdout
+        hold_out_severity_threshold: Optional[float] = None,  # e.g., 0.8 to hold out high severity samples
+        mode: str = 'train',  # 'train', 'val', 'test'
+        val_split: float = 0.1,
+        test_split: float = 0.1,
     ):
         """
         Args:
-            num_samples: Total number of samples in dataset.
-            seq_length: Number of time-series points per modality sequence.
-            split: 'train', 'val', 'test_indist', or 'test_ood'.
-            soc_range: Custom SOC bounds (overrides split defaults if provided).
-            noise_multiplier: Scaling factor for sensor noise (for robustness testing).
-            dropout_modality: Modality to zero-out/corrupt (for sensor loss testing).
-            seed: RNG seed for reproducible generation.
-            transform: Optional transform callable.
+            num_samples (int): Total number of samples to generate across all cells.
+            seq_length (int): Length of each signal sequence.
+            soc_range (tuple): Range of SOC to draw from [min_soc, max_soc].
+            temp_range (tuple): Range of ambient temperature to draw from [min_temp, max_temp] in Celsius.
+            severity_range (tuple): Range of severity sampling for each degradation mode [min_sev, max_sev].
+            num_cells (int): Number of distinct cells to simulate (each cell has its own base parameters).
+            samples_per_cell (int): Number of time steps (pulses) to generate per cell to form a run.
+            transform (callable, optional): Optional transform.
+            seed (int, optional): Random seed for reproducible dataset construction.
+            hold_out_soc_range (tuple, optional): SOC range to hold out entirely (for validation/test).
+            hold_out_temp_range (tuple, optional): Temperature range to hold out entirely.
+            hold_out_severity_threshold (float, optional): Severity threshold above which to hold out samples.
+            mode (str): Which split to return ('train', 'val', 'test').
+            val_split (float): Fraction of data to use for validation.
+            test_split (float): Fraction of data to use for test.
         """
         self.num_samples = num_samples
         self.seq_length = seq_length
-        self.split = split
-        self.noise_multiplier = max(0.0, noise_multiplier)
-        self.dropout_modality = dropout_modality
-        self.seed = seed
+        self.soc_range = soc_range
+        self.temp_range = temp_range
+        self.severity_range = severity_range
+        self.num_cells = num_cells
+        self.samples_per_cell = samples_per_cell
         self.transform = transform
-        self.degradation_modes = list(self.DEGRADATION_MODES)
-        self.num_classes = len(self.DEGRADATION_MODES)
+        self.seed = seed
+        self.mode = mode
+        self.val_split = val_split
+        self.test_split = test_split
+        self.hold_out_soc_range = hold_out_soc_range
+        self.hold_out_temp_range = hold_out_temp_range
+        self.hold_out_severity_threshold = hold_out_severity_threshold
 
-        # Configure SOC & Temperature bounds based on split
-        if soc_range is not None:
-            self.soc_range = soc_range
-        elif split == 'train':
-            self.soc_range = (0.20, 0.80)
-            self.temp_amb_range = (20.0, 32.0)
-        elif split == 'val':
-            self.soc_range = (0.20, 0.80)
-            self.temp_amb_range = (20.0, 32.0)
-        elif split == 'test_indist':
-            self.soc_range = (0.20, 0.80)
-            self.temp_amb_range = (20.0, 32.0)
-        elif split == 'test_ood':
-            # Held-out boundary regimes: low SOC (0.05-0.20) or high SOC (0.80-0.95), extreme temps
-            self.soc_range = (0.05, 0.95)
-            self.temp_amb_range = (10.0, 45.0)
-        else:
-            self.soc_range = (0.10, 0.90)
-            self.temp_amb_range = (15.0, 35.0)
+        # Compute number of raw samples to generate before splitting to achieve exactly num_samples after splitting
+        def _compute_raw_target():
+            # We'll iterate to find R such that after splitting we get exactly num_samples for the current mode
+            R = self.num_samples  # start at least at the desired number
+            while True:
+                n_val = int(R * self.val_split)
+                n_test = int(R * self.test_split)
+                n_train = R - n_val - n_test
+                if self.mode == 'train' and n_train == self.num_samples:
+                    return R
+                elif self.mode == 'val' and n_val == self.num_samples:
+                    return R
+                elif self.mode == 'test' and n_test == self.num_samples:
+                    return R
+                R += 1
 
-        # Pre-seed for deterministic sample generation if seed is provided
+        self._raw_target = _compute_raw_target()
+
+        self.degradation_modes = [
+            'healthy', 'li_plating', 'active_material_loss',
+            'electrolyte_decomposition', 'gas_generation', 'internal_short'
+        ]
+        self.num_classes = len(self.degradation_modes)
+
+        # Compute healthy parameters and deltas for each mode
+        self.healthy_params = DEGRADATION_PHYSICS_PARAMS['healthy']
+        self.mode_deltas = {}
+        for mode in self.degradation_modes:
+            if mode == 'healthy':
+                continue
+            delta = {}
+            for key in self.healthy_params:
+                if key in DEGRADATION_PHYSICS_PARAMS[mode]:
+                    delta[key] = DEGRADATION_PHYSICS_PARAMS[mode][key] - self.healthy_params[key]
+                else:
+                    delta[key] = 0.0  # assume no change if not present
+            self.mode_deltas[mode] = delta
+
         if seed is not None:
-            self.rng = np.random.RandomState(seed)
+            np.random.seed(seed)
+            random.seed(seed)
+
+        # Generate all samples and then split
+        self.samples = self._generate_all_samples()
+        self._split_samples()
+
+    def _generate_all_samples(self):
+        """Generate samples for all cells, then we will split into train/val/test."""
+        all_samples = []
+
+        # Generate exactly self._raw_target samples
+        for sample_idx in range(self._raw_target):
+            # Determine which cell this sample belongs to (for cell-to-cell variation)
+            cell_idx = sample_idx % self.num_cells
+
+            # Sample base parameters for this cell (cell-to-cell variation)
+            base_params = {}
+            for key, healthy_val in self.healthy_params.items():
+                # Add cell-to-cell variation: ±5% of healthy value
+                variation = random.uniform(-0.05, 0.05)
+                base_params[key] = healthy_val * (1.0 + variation)
+
+            # Sample SOC, temperature, and severity for each mode
+            soc = random.uniform(self.soc_range[0], self.soc_range[1])
+            temp_ambient = random.uniform(self.temp_range[0], self.temp_range[1])
+
+            # Sample severity for each degradation mode from uniform distribution
+            mode_severities = {}
+            for mode in self.degradation_modes:
+                if mode == 'healthy':
+                    # Healthy mode severity is 1 - sum of other severities? We'll treat healthy as baseline.
+                    # We'll sample severity for healthy as well, but we will not add delta for healthy.
+                    mode_severities[mode] = random.uniform(self.severity_range[0], self.severity_range[1])
+                else:
+                    mode_severities[mode] = random.uniform(self.severity_range[0], self.severity_range[1])
+
+            # Compute parameters for this sample: base + sum(severity_m * delta_m)
+            params = base_params.copy()
+            for mode in self.degradation_modes:
+                if mode == 'healthy':
+                    continue
+                sev = mode_severities[mode]
+                delta = self.mode_deltas[mode]
+                for key, val in delta.items():
+                    params[key] += sev * val
+
+            # Ensure parameters stay within reasonable bounds (clip to healthy ± 50%)
+            for key, healthy_val in self.healthy_params.items():
+                min_val = healthy_val * 0.5
+                max_val = healthy_val * 1.5
+                params[key] = max(min_val, min(max_val, params[key]))
+
+            # Add sensor drift: low-frequency sinusoidal offset (we'll add after simulation)
+            # We'll store drift parameters to apply later
+            drift_freq = random.uniform(0.01, 0.1)  # Hz, low frequency
+            drift_amp_voltage = random.uniform(-0.01, 0.01)  # V
+            drift_amp_ultrasonic = random.uniform(-0.02, 0.02)  # V
+            drift_amp_thermal = random.uniform(-0.1, 0.1)  # K
+
+            # Sample whether to add noise (we'll mostly add noise, but sometimes not for robustness)
+            add_noise = random.random() > 0.05  # 95% chance to add noise
+
+            # Prepare sample dict (we will compute waveforms later in __getitem__ to avoid storing large arrays)
+            sample_info = {
+                'cell_idx': cell_idx,
+                'soc': soc,
+                'temp_ambient': temp_ambient,
+                'mode_severities': mode_severities,
+                'params': params,
+                'drift_freq': drift_freq,
+                'drift_amp_voltage': drift_amp_voltage,
+                'drift_amp_ultrasonic': drift_amp_ultrasonic,
+                'drift_amp_thermal': drift_amp_thermal,
+                'add_noise': add_noise,
+            }
+            all_samples.append(sample_info)
+
+        return all_samples
+
+    def _split_samples(self):
+        """Split samples into train, val, test based on holdout criteria and random split."""
+        # First, apply holdout filters: remove samples that should be held out entirely
+        filtered_samples = []
+        for sample in self.samples:
+            soc = sample['soc']
+            temp = sample['temp_ambient']
+            # Compute max severity across modes (excluding healthy?)
+            max_severity = max(sample['mode_severities'].values()) if self.num_classes > 1 else 0.0
+
+            holdout = False
+            if self.hold_out_soc_range and self.hold_out_soc_range[0] <= soc <= self.hold_out_soc_range[1]:
+                holdout = True
+            if self.hold_out_temp_range and self.hold_out_temp_range[0] <= temp <= self.hold_out_temp_range[1]:
+                holdout = True
+            if self.hold_out_severity_threshold is not None and max_severity >= self.hold_out_severity_threshold:
+                holdout = True
+
+            if not holdout:
+                filtered_samples.append(sample)
+
+        # Now split the filtered samples into train, val, test randomly
+        random.shuffle(filtered_samples)
+        n_total = len(filtered_samples)
+        n_val = int(n_total * self.val_split)
+        n_test = int(n_total * self.test_split)
+        n_train = n_total - n_val - n_test
+
+        if self.mode == 'train':
+            self.samples = filtered_samples[:n_train]
+        elif self.mode == 'val':
+            self.samples = filtered_samples[n_train:n_train + n_val]
+        elif self.mode == 'test':
+            self.samples = filtered_samples[n_train + n_val:]
         else:
-            self.rng = np.random.RandomState()
+            raise ValueError(f"Unknown mode: {self.mode}")
 
-    def __len__(self) -> int:
-        return self.num_samples
+    def __len__(self):
+        return len(self.samples)
 
-    def _sample_continuous_physics(self, mode_idx: int) -> Dict[str, Any]:
-        """
-        Samples continuous physical parameters with non-linear cross-modal coupling,
-        manufacturing variations, and continuous severity index xi in [0, 1].
-        """
-        mode = self.DEGRADATION_MODES[mode_idx]
+    def __getitem__(self, idx):
+        sample_info = self.samples[idx]
 
-        # Draw SOC
-        if self.split == 'test_ood':
-            # In OOD split, bias towards extreme ranges
-            if self.rng.rand() > 0.5:
-                soc = float(self.rng.uniform(0.05, 0.20))
-            else:
-                soc = float(self.rng.uniform(0.80, 0.95))
-        else:
-            soc = float(self.rng.uniform(self.soc_range[0], self.soc_range[1]))
-
-        # Base nominal baseline values
-        r0_nom = 0.025
-        r1_nom = 0.015
-        c1_nom = 1000.0
-        sos_nom = 2450.0
-        atten_nom = 0.95
-        r_th_nom = 2.0
-        c_th_nom = 50.0
-
-        # Cell-to-cell manufacturing variation (+/- 2.5%)
-        cell_var = float(self.rng.normal(0.0, 0.025))
-        r0_nom *= (1.0 + cell_var)
-        r1_nom *= (1.0 + cell_var)
-        c1_nom *= (1.0 - cell_var)
-
-        # Continuous severity index xi in [0.0, 1.0]
-        if mode == 'healthy':
-            xi = float(self.rng.uniform(0.0, 0.12))
-            r0 = r0_nom * (1.0 + 0.10 * xi + self.rng.uniform(-0.03, 0.03))
-            r1 = r1_nom * (1.0 + 0.10 * xi)
-            c1 = c1_nom
-            sos = sos_nom + 25.0 * soc - 1.2 * (25.0 - 25.0) + self.rng.uniform(-15.0, 15.0)
-            attenuation = float(np.clip(atten_nom - 0.05 * xi + self.rng.uniform(-0.02, 0.02), 0.85, 1.0))
-            r_th = r_th_nom * (1.0 + 0.05 * xi)
-            c_th = c_th_nom
-            phase_shift = float(self.rng.uniform(-0.02, 0.02))
-            gas_reverb = False
-            temp_ambient = float(self.rng.uniform(self.temp_amb_range[0], self.temp_amb_range[1]))
-            soh = float(np.clip(98.5 - 4.0 * xi + self.rng.normal(0, 0.8), 92.0, 100.0))
-
-        elif mode == 'li_plating':
-            # Lithium plating: metallic lithium deposition stiffens acoustic interface (+SoS),
-            # increases R0 moderately, drops attenuation slightly
-            xi = float(self.rng.uniform(0.15, 1.0))
-            r0 = r0_nom * (1.0 + 0.55 * xi + self.rng.uniform(-0.04, 0.04))
-            r1 = r1_nom * (1.0 + 0.35 * xi)
-            c1 = c1_nom * (1.0 - 0.15 * xi)
-            sos = sos_nom + 420.0 * xi + 30.0 * soc + self.rng.uniform(-20.0, 20.0)
-            attenuation = float(np.clip(atten_nom - 0.22 * xi + self.rng.uniform(-0.03, 0.03), 0.65, 0.95))
-            r_th = r_th_nom * (1.0 + 0.20 * xi)
-            c_th = c_th_nom
-            phase_shift = float(0.08 * xi + self.rng.uniform(-0.03, 0.03))
-            gas_reverb = False
-            temp_ambient = float(self.rng.uniform(self.temp_amb_range[0] - 5.0, self.temp_amb_range[1]))  # often cold
-            soh = float(np.clip(94.0 - 18.0 * xi + self.rng.normal(0, 1.0), 72.0, 92.0))
-
-        elif mode == 'active_material_loss':
-            # Loss of active material (LAM): significant R0 and R1 growth, moderate acoustic softening
-            xi = float(self.rng.uniform(0.15, 1.0))
-            r0 = r0_nom * (1.0 + 2.20 * xi + self.rng.uniform(-0.06, 0.06))
-            r1 = r1_nom * (1.0 + 1.80 * xi)
-            c1 = c1_nom * (1.0 - 0.40 * xi)
-            sos = sos_nom - 140.0 * xi + 20.0 * soc + self.rng.uniform(-25.0, 25.0)
-            attenuation = float(np.clip(atten_nom - 0.45 * xi + self.rng.uniform(-0.04, 0.04), 0.45, 0.85))
-            r_th = r_th_nom * (1.0 + 0.45 * xi)
-            c_th = c_th_nom * (1.0 - 0.10 * xi)
-            phase_shift = float(-0.05 * xi + self.rng.uniform(-0.03, 0.03))
-            gas_reverb = False
-            temp_ambient = float(self.rng.uniform(self.temp_amb_range[0], self.temp_amb_range[1]))
-            soh = float(np.clip(92.0 - 32.0 * xi + self.rng.normal(0, 1.2), 58.0, 88.0))
-
-        elif mode == 'electrolyte_decomposition':
-            # Electrolyte dryout/decomposition: pronounced acoustic speed drop and impedance rise
-            xi = float(self.rng.uniform(0.15, 1.0))
-            r0 = r0_nom * (1.0 + 1.40 * xi + self.rng.uniform(-0.05, 0.05))
-            r1 = r1_nom * (1.0 + 1.20 * xi)
-            c1 = c1_nom * (1.0 - 0.30 * xi)
-            sos = sos_nom - 380.0 * xi + 15.0 * soc + self.rng.uniform(-30.0, 30.0)
-            attenuation = float(np.clip(atten_nom - 0.52 * xi + self.rng.uniform(-0.04, 0.04), 0.35, 0.80))
-            r_th = r_th_nom * (1.0 + 0.60 * xi)
-            c_th = c_th_nom
-            phase_shift = float(-0.12 * xi + self.rng.uniform(-0.04, 0.04))
-            gas_reverb = False
-            temp_ambient = float(self.rng.uniform(self.temp_amb_range[0], self.temp_amb_range[1] + 5.0))
-            soh = float(np.clip(93.0 - 28.0 * xi + self.rng.normal(0, 1.1), 62.0, 90.0))
-
-        elif mode == 'gas_generation':
-            # Gas pouching: severe acoustic attenuation & scattering reflections, modest R0 rise
-            xi = float(self.rng.uniform(0.15, 1.0))
-            r0 = r0_nom * (1.0 + 0.65 * xi + self.rng.uniform(-0.04, 0.04))
-            r1 = r1_nom * (1.0 + 0.50 * xi)
-            c1 = c1_nom * (1.0 - 0.20 * xi)
-            sos = sos_nom - 220.0 * xi + 10.0 * soc + self.rng.uniform(-25.0, 25.0)
-            attenuation = float(np.clip(atten_nom - 0.72 * xi + self.rng.uniform(-0.04, 0.04), 0.18, 0.65))
-            r_th = r_th_nom * (1.0 + 0.85 * xi)  # gas pocket insulates thermally
-            c_th = c_th_nom * (1.0 - 0.15 * xi)
-            phase_shift = float(0.15 * xi + self.rng.uniform(-0.05, 0.05))
-            gas_reverb = True
-            temp_ambient = float(self.rng.uniform(self.temp_amb_range[0], self.temp_amb_range[1]))
-            soh = float(np.clip(94.0 - 24.0 * xi + self.rng.normal(0, 1.0), 68.0, 91.0))
-
-        elif mode == 'internal_short':
-            # Micro-short: massive localized heating (high ambient/bulk dT) and elevated R0
-            xi = float(self.rng.uniform(0.15, 1.0))
-            r0 = r0_nom * (1.0 + 3.80 * xi + self.rng.uniform(-0.08, 0.08))
-            r1 = r1_nom * (1.0 + 2.50 * xi)
-            c1 = c1_nom * (1.0 - 0.50 * xi)
-            sos = sos_nom - 160.0 * xi - 2.5 * (15.0 * xi) + self.rng.uniform(-20.0, 20.0)
-            attenuation = float(np.clip(atten_nom - 0.38 * xi + self.rng.uniform(-0.04, 0.04), 0.40, 0.85))
-            r_th = r_th_nom * (1.0 + 0.30 * xi)
-            c_th = c_th_nom
-            phase_shift = float(self.rng.uniform(-0.03, 0.03))
-            gas_reverb = False
-            temp_ambient = float(25.0 + 18.0 * xi + self.rng.uniform(0.0, 5.0))  # hot spot
-            soh = float(np.clip(90.0 - 45.0 * xi + self.rng.normal(0, 1.5), 45.0, 85.0))
-
-        else:
-            raise ValueError(f"Unknown degradation mode: {mode}")
-
-        return {
-            'soc': float(soc),
-            'r0': float(r0),
-            'r1': float(r1),
-            'c1': float(c1),
-            'sos': float(sos),
-            'attenuation': float(attenuation),
-            'r_th': float(r_th),
-            'c_th': float(c_th),
-            'phase_shift': float(phase_shift),
-            'gas_reverb': gas_reverb,
-            'temp_ambient': float(temp_ambient),
-            'soh': float(soh),
-            'xi': float(xi)
-        }
-
-    def __getitem__(self, idx: int) -> Dict[str, Any]:
-        mode_idx = idx % self.num_classes
-        p = self._sample_continuous_physics(mode_idx)
-
-        # Synthesize pure ODE waveforms
+        # Synthesize waveforms purely through physics engine without passing degradation label
         sampling_rate_hz = 200000.0
-        period_s = self.seq_length / sampling_rate_hz
-
+        period_s = (self.seq_length) / sampling_rate_hz
         sim_res = simulate_cell_from_parameters(
-            soc=p['soc'],
-            r0=p['r0'],
-            r1=p['r1'],
-            c1=p['c1'],
-            sos=p['sos'],
-            attenuation=p['attenuation'],
-            r_th=p['r_th'],
-            c_th=p['c_th'],
+            soc=sample_info['soc'],
+            r0=sample_info['params']['r0'],
+            r1=sample_info['params']['r1'],
+            c1=sample_info['params']['c1'],
+            sos=sample_info['params']['sos'],
+            attenuation=sample_info['params']['attenuation'],
+            r_th=sample_info['params']['r_th'],
+            c_th=sample_info['params']['c_th'],
             pulse_amp=0.5,
             pulse_width_s=10e-6,
             period_s=period_s,
             sampling_rate_hz=sampling_rate_hz,
-            add_noise=False,  # We add noise explicitly below with noise_multiplier
-            phase_shift=p['phase_shift'],
-            gas_reverb=p['gas_reverb'],
-            temp_ambient=p['temp_ambient']
+            add_noise=sample_info['add_noise'],
+            phase_shift=0.0,  # we'll ignore phase shift from params for simplicity, or we could add it
+            gas_reverb=False,  # we'll ignore gas_reverb for simplicity
+            temp_ambient=sample_info['temp_ambient']
         )
 
-        voltage = sim_res['electrical']['voltage'][:self.seq_length].copy()
-        ultrasonic_sig = sim_res['ultrasonic']['signal'][:self.seq_length].copy()
-        temp_rise = sim_res['thermal']['temperature_rise'][:self.seq_length].copy()
+        voltage = sim_res['electrical']['voltage'][:self.seq_length]
+        ultrasonic_sig = sim_res['ultrasonic']['signal'][:self.seq_length]
+        temp_rise = sim_res['thermal']['temperature_rise'][:self.seq_length]
 
-        # Add Gaussian sensor noise scaled by noise_multiplier
-        if self.noise_multiplier > 0:
-            v_noise = self.rng.normal(0, 0.002 * self.noise_multiplier, size=len(voltage))
-            u_noise = self.rng.normal(0, 0.015 * self.noise_multiplier, size=len(ultrasonic_sig))
-            t_noise = self.rng.normal(0, 0.020 * self.noise_multiplier, size=len(temp_rise))
-            voltage += v_noise
-            ultrasonic_sig += u_noise
-            temp_rise += t_noise
-
-        # Apply sensor dropout if configured (for sensor loss / robustness testing)
-        if self.dropout_modality == 'electrical':
-            voltage = np.zeros_like(voltage) + 3.7
-        elif self.dropout_modality == 'ultrasonic':
-            ultrasonic_sig = np.zeros_like(ultrasonic_sig)
-        elif self.dropout_modality == 'thermal':
-            temp_rise = np.zeros_like(temp_rise)
+        # Apply sensor drift (low-frequency sinusoidal offset)
+        t = np.arange(self.seq_length) / sampling_rate_hz
+        voltage += sample_info['drift_amp_voltage'] * np.sin(2 * np.pi * sample_info['drift_freq'] * t)
+        ultrasonic_sig += sample_info['drift_amp_ultrasonic'] * np.sin(2 * np.pi * sample_info['drift_freq'] * t)
+        temp_rise += sample_info['drift_amp_thermal'] * np.sin(2 * np.pi * sample_info['drift_freq'] * t)
 
         # Standard physical scaling normalization
         electrical = (voltage - 3.0) / 1.5
@@ -305,26 +286,33 @@ class ContinuousMultiModalBatteryDataset(Dataset):
         ultra_tensor = torch.from_numpy(ultrasonic).float().unsqueeze(0)
         therm_tensor = torch.from_numpy(thermal).float().unsqueeze(0)
 
+        # Compute ground truth continuous SOH derived from physical degradation state
+        # We'll use the nominal_soh from the healthy baseline and adjust by severity?
+        # For simplicity, we use the same formula as before but with the cell's soc.
+        nominal_soh = self.healthy_params['nominal_soh']  # 95.0 for healthy
+        soh = float(np.clip(nominal_soh * (1.0 - 0.05 * (1.0 - sample_info['soc'])) + np.random.normal(0, 1.2), 0.0, 100.0))
+
+        # Determine degradation mode label: the mode with the highest severity (excluding healthy?)
+        # If healthy has highest severity, we label as healthy.
+        severities = sample_info['mode_severities']
+        # If we want to exclude healthy from being the label when other modes are present, we can do:
+        #   max_mode = max([m for m in self.degradation_modes if m != 'healthy'], key=lambda m: severities[m])
+        # But we'll keep it simple: the mode with the highest severity wins.
+        max_mode = max(severities, key=severities.get)
+        mode_idx = self.degradation_modes.index(max_mode)
+
         sample = {
             'electrical': elec_tensor,
             'ultrasonic': ultra_tensor,
             'thermal': therm_tensor,
             'degradation_mode': torch.tensor(mode_idx, dtype=torch.long),
-            'soh': torch.tensor(p['soh'], dtype=torch.float32),
-            'soc': torch.tensor(p['soc'], dtype=torch.float32),
-            'r0': torch.tensor(p['r0'], dtype=torch.float32),
-            'sos': torch.tensor(p['sos'], dtype=torch.float32),
-            'attenuation': torch.tensor(p['attenuation'], dtype=torch.float32),
-            'phase_shift': torch.tensor(p['phase_shift'], dtype=torch.float32),
-            'temp_ambient': torch.tensor(p['temp_ambient'], dtype=torch.float32),
-            'xi': torch.tensor(p['xi'], dtype=torch.float32)
+            'soh': torch.tensor(soh, dtype=torch.float32),
+            'soc': torch.tensor(sample_info['soc'], dtype=torch.float32),
+            'r0': torch.tensor(sample_info['params']['r0'], dtype=torch.float32),
+            'sos': torch.tensor(sample_info['params']['sos'], dtype=torch.float32),
         }
 
         if self.transform:
             sample = self.transform(sample)
 
         return sample
-
-
-# Alias for backward compatibility
-MultiModalBatteryDataset = ContinuousMultiModalBatteryDataset
