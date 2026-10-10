@@ -1,14 +1,20 @@
-Item,Description,Quantity,Unit Cost (USD),Total Cost (USD),Supplier/Part Number,Notes
-MCU,ESP32-WROOM-32 (or similar dual-core MCU with Wi-Fi/BLE),1,6.00,6.00,Espressif,Alternative: STM32F401 (lower cost but less RAM)
-Electrical Sensor,INA226 High-Side Current/Power Sensor,1,1.50,1.50,Texas Instruments,Measures bus voltage, shunt voltage, current, power
-Ultrasonic Transmitter,Piezoceramic Disc (40kHz),1,0.50,0.50,Various,40kHz resonant frequency
-Ultrasonic Receiver,Piezoceramic Disc (40kHz),1,0.50,0.50,Various,Same as transmitter
-Thermal Sensor,TMP102 Digital Temperature Sensor (or similar),1,0.80,0.80,Texas Instruments,I2C, ±0.5°C accuracy
-Excitation Driver,MOSFET (e.g., 2N7002) for pulse generation,1,0.10,0.10,Various,Low-side switch for excitation pulse
-Bidirectional DC-DC,Buck-Boost Converter Module (e.g., based on LT8390 or similar),1,15.00,15.00,Analog Devices / TI,Supports bidirectional current flow, 5V-20V range
-Current Sensor (for power stage),ACS712 Low Current Sensor (5A version),1,2.00,2.00,Allegro Microsystems,Measures charge/discharge current during recovery
-Voltage Sensor (for power stage),Voltage Divider Resistors (2x 10kΩ),1,0.05,0.05,Various,For scaling power stage voltage to MCU ADC range
-USB-to-UART Bridge,CP2102 or CH340 USB-to-UART Converter,1,0.80,0.80,Silicon Labs / WCH,Enables USB CDC virtual COM port for host communication
-Miscellaneous,Resistors, Capacitors, Connectors, PCB,1,5.00,5.00,Various,Includes passives, pin headers, prototype PCB, I2C pull-ups (4.7kΩ), filtering components
-Software/Development,Open-source software (FreeRTOS, PyTorch),1,0.00,0.00,N/A,No additional cost
-,,TOTAL,,31.45,,,
+Item,Category,Designator,Description,Manufacturer,Part Number,Distributor SKU,Footprint,Unit Price (USD),Qty,Extended Cost (USD)
+1,Microcontroller,U1,ESP32-S3-WROOM-1-N8 Dual-Core LX7 240MHz MCU 8MB Flash,Espressif Systems,ESP32-S3-WROOM-1-N8,DigiKey: 1965-ESP32-S3-WROOM-1-N8-ND,Module SMD,3.20,1,3.20
+2,Ultrasonic TDC,U2,TDC7200 Time-to-Digital Converter (55ps RMS Resolution SPI),Texas Instruments,TDC7200PWR,DigiKey: 296-41880-1-ND,TSSOP-14,2.45,1,2.45
+3,Ultrasonic LNA,U3,AD8065 FastFET Ultra-Low Distortion JFET OpAmp (145MHz),Analog Devices,AD8065ARTZ-R2,DigiKey: AD8065ARTZ-R2CT-ND,SOT-23-5,1.85,1,1.85
+4,Fast Comparator,U4,TLV3501 4.5ns High-Speed Rail-to-Rail Comparator,Texas Instruments,TLV3501AIDBVT,DigiKey: 296-17983-1-ND,SOT-23-6,1.40,1,1.40
+5,Pulser Driver,U5,TC4420EPA 6A High-Speed Single MOSFET Gate Driver,Microchip Technology,TC4420EPA,DigiKey: TC4420EPA-ND,DIP-8 / SOIC-8,1.25,1,1.25
+6,Electrical AFE,U6,INA226 16-Bit High-Side Current & Power Monitor I2C,Texas Instruments,INA226AIDGSR,DigiKey: 296-30155-1-ND,VSSOP-10,1.55,1,1.55
+7,Thermal Optical,U7,MLX90614ESF-BAA Non-Contact IR Thermometer Sensor,Melexis Technologies,MLX90614ESF-BAA-000-TU,DigiKey: MLX90614ESF-BAA-ND,TO-39,5.80,1,5.80
+8,Thermal Contact,RT1,RT2,NTC Thermistor 10kΩ ±0.5% 25°C Beta 3950 (Surface Contact),TDK Corporation,B57861S0103F040,DigiKey: 495-2144-ND,Radial Bead,0.65,2,1.30
+9,PZT Transducers,X1,X2,1.0 MHz Piezoceramic Disc Transducers (Lead Zirconate Titanate),Steminc / Steiner & Martins,SMD10T2R111WL,Manufacturer Direct,Disc D10mm x 2mm,2.10,2,4.20
+10,Power MOSFETs,Q1,Q2,FDMS86180 N-Ch Shielded Gate PowerTrench 100V 60A 3.2mΩ,ON Semiconductor,FDMS86180,DigiKey: FDMS86180CT-ND,Power56 (5x6mm),1.15,2,2.30
+11,Gate Driver,U8,TPS28225 High-Frequency Synchronous Buck MOSFET Driver,Texas Instruments,TPS28225DRBR,DigiKey: 296-24898-1-ND,SON-8,1.10,1,1.10
+12,Storage Inductor,L1,SER2918H-103KL 10µH 14.5A High-Current Inductor,Coilcraft,SER2918H-103KL,Mouser: 994-SER2918H-103KL,SMD 29x18mm,3.40,1,3.40
+13,Current Shunt,R_SHUNT,10mΩ 0.1% 5W 4-Terminal Kelvin Current Sense Resistor,Bourns,CSS2H-2512R-L010F,DigiKey: CSS2H-2512R-L010FCT-ND,2512 4-Wire,1.15,1,1.15
+14,Safety Relays,K1,G3VM-61A1 Solid State MOSFET Relay Opto-Isolated 60V 500mA,Omron Electronics,G3VM-61A1,DigiKey: Z2698-ND,DIP-4 SMD,1.60,1,1.60
+15,USB-UART Bridge,U9,CP2102N USBXpress USB-to-UART Bridge Controller,Silicon Labs,CP2102N-A02-GQFN24,DigiKey: 336-3983-1-ND,QFN-24,1.40,1,1.40
+16,Passives & Decoupling,PASSIVES,C0G/X7R Ceramic Capacitors + 0.1% Thin Film Resistors,Yageo / Murata,Generic Kit,DigiKey: Multiple,0603 / 0805 SMD,2.50,1,2.50
+17,Custom PCB,PCB,4-Layer High-Frequency FR4 PCB (ENIG Gold Finish 1.6mm),JLCPCB / PCBWay,Custom Fab,JLC-4L-100x100,100x100mm,2.80,1,2.80
+18,Mechanical Fixture,MECH,3D Printed Transducer Clamp + Acoustic Silicone Elastomer Pad,Custom In-House,MECH-FIX-18650,PETG / Dow Sylgard 184,Custom,0.85,1,0.85
+,,,,,,TOTAL PRODUCTION BOM COST,,,,38.75

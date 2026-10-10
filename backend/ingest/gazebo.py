@@ -23,9 +23,9 @@ if project_root not in sys.path:
 from common.diagnostic_schema import DiagnosticFrame
 
 try:
-    from ev_cell_multimodal_sim.core.physics_engine import DEGRADATION_PHYSICS_PARAMS
+    from backend.battery_physics import DynamicBatteryPhysicsEngine, BATTERY_CHEMISTRIES, FORM_FACTOR_GEOMETRY
 except ImportError:
-    from core.physics_engine import DEGRADATION_PHYSICS_PARAMS
+    from battery_physics import DynamicBatteryPhysicsEngine, BATTERY_CHEMISTRIES, FORM_FACTOR_GEOMETRY
 
 # Try to import ROS 2 libraries
 try:
@@ -40,16 +40,30 @@ except ImportError:
 
 
 class GazeboIngestor:
-    def __init__(self, soc: float = 0.5, degradation_mode: str = 'healthy',
-                 noise_level: float = 0.1, excitation_amplitude: float = 0.5):
+    def __init__(self, chemistry: str = 'nmc_811', form_factor: str = '21700_cylindrical',
+                 soc: float = 0.5, degradation_mode: str = 'healthy',
+                 ambient_temp_c: float = 25.0, load_current_c: float = 0.0,
+                 cycle_count: int = 0, noise_level: float = 0.05, excitation_amplitude: float = 0.5):
         """
-        Initialize the Gazebo/ROS 2 ingestor.
+        Initialize the Gazebo/ROS 2 ingestor with dynamic multi-chemistry physics.
         """
         self.node = None
         self.is_initialized = False
         self.frame_id_counter = 0
 
-        # Latest sensor data from ROS topics
+        # Continuous physics engine for non-hardcoded multi-chemistry dynamics
+        self.engine = DynamicBatteryPhysicsEngine(chemistry=chemistry, form_factor=form_factor)
+        self.engine.set_parameters(
+            soc=soc,
+            degradation_mode=degradation_mode,
+            ambient_temp_c=ambient_temp_c,
+            load_current_c=load_current_c,
+            cycle_count=cycle_count,
+            noise_level=noise_level,
+            excitation_amplitude_a=excitation_amplitude
+        )
+
+        # Latest sensor data from ROS topics if ROS2 is present
         self.latest_voltage = 0.0
         self.latest_current = 0.0
         self.latest_temperature = 25.0  # Celsius
@@ -62,11 +76,81 @@ class GazeboIngestor:
         self.latest_noise_level = noise_level
         self.latest_excitation_amplitude = excitation_amplitude
 
-        # Default parameters
-        self.soc = soc
-        self.degradation_mode = degradation_mode
-        self.noise_level = noise_level
-        self.excitation_amplitude = excitation_amplitude
+    @property
+    def degradation_mode(self) -> str:
+        return self.engine.degradation_mode
+
+    @degradation_mode.setter
+    def degradation_mode(self, value: str):
+        self.engine.set_parameters(degradation_mode=str(value))
+        self.latest_degradation_mode = str(value)
+
+    @property
+    def soc(self) -> float:
+        return self.engine.soc
+
+    @soc.setter
+    def soc(self, value: float):
+        self.engine.set_parameters(soc=float(value))
+        self.latest_soc = float(value)
+
+    @property
+    def chemistry(self) -> str:
+        return self.engine.chemistry
+
+    @chemistry.setter
+    def chemistry(self, value: str):
+        self.engine.set_parameters(chemistry=str(value))
+
+    @property
+    def form_factor(self) -> str:
+        return self.engine.form_factor
+
+    @form_factor.setter
+    def form_factor(self, value: str):
+        self.engine.set_parameters(form_factor=str(value))
+
+    @property
+    def ambient_temp_c(self) -> float:
+        return self.engine.ambient_temp_c
+
+    @ambient_temp_c.setter
+    def ambient_temp_c(self, value: float):
+        self.engine.set_parameters(ambient_temp_c=float(value))
+
+    @property
+    def load_current_c(self) -> float:
+        return self.engine.load_current_c
+
+    @load_current_c.setter
+    def load_current_c(self, value: float):
+        self.engine.set_parameters(load_current_c=float(value))
+
+    @property
+    def cycle_count(self) -> int:
+        return self.engine.cycle_count
+
+    @cycle_count.setter
+    def cycle_count(self, value: int):
+        self.engine.set_parameters(cycle_count=int(value))
+
+    @property
+    def noise_level(self) -> float:
+        return self.engine.noise_level
+
+    @noise_level.setter
+    def noise_level(self, value: float):
+        self.engine.set_parameters(noise_level=float(value))
+        self.latest_noise_level = float(value)
+
+    @property
+    def excitation_amplitude(self) -> float:
+        return self.engine.excitation_amplitude_a
+
+    @excitation_amplitude.setter
+    def excitation_amplitude(self, value: float):
+        self.engine.set_parameters(excitation_amplitude_a=float(value))
+        self.latest_excitation_amplitude = float(value)
 
     async def initialize(self):
         """Initialize the ROS 2 node and subscribers."""
@@ -214,25 +298,21 @@ class GazeboIngestor:
         mode_int = int(round(msg.data))
         self.latest_degradation_mode = mode_map.get(mode_int, 'healthy')
 
-    async def set_parameters(self, soc: Optional[float] = None,
-                           degradation_mode: Optional[str] = None,
-                           noise_level: Optional[float] = None,
-                           excitation_amplitude: Optional[float] = None):
-        """Update simulation parameters (for compatibility with interface)."""
-        if soc is not None:
-            self.soc = max(0.0, min(1.0, soc))
-        # Note: In a real Gazebo setup, these would be set via Gazebo parameters or ROS parameters
-        # For now, we just store them for compatibility
-        if degradation_mode is not None:
-            self.degradation_mode = degradation_mode
-        if noise_level is not None:
-            self.noise_level = max(0.0, min(1.0, noise_level))
-        if excitation_amplitude is not None:
-            self.excitation_amplitude = max(0.0, excitation_amplitude)
+    async def set_parameters(self, **kwargs):
+        """Update simulation parameters dynamically in physics engine."""
+        self.engine.set_parameters(**kwargs)
+        if 'soc' in kwargs:
+            self.latest_soc = float(kwargs['soc'])
+        if 'degradation_mode' in kwargs:
+            self.latest_degradation_mode = str(kwargs['degradation_mode'])
+        if 'noise_level' in kwargs:
+            self.latest_noise_level = float(kwargs['noise_level'])
+        if 'excitation_amplitude' in kwargs:
+            self.latest_excitation_amplitude = float(kwargs['excitation_amplitude'])
 
     async def get_frame(self) -> Optional[Dict[str, Any]]:
         """
-        Get a frame from Gazebo/ROS 2.
+        Get a frame from Gazebo/ROS 2 or Dynamic Physics Twin.
         Returns a DiagnosticFrame-compatible dictionary.
         """
         if not self.is_initialized:
@@ -252,155 +332,67 @@ class GazeboIngestor:
         """
         Convert Gazebo/ROS 2 sensor readings to DiagnosticFrame format.
         """
-        phys = DEGRADATION_PHYSICS_PARAMS.get(self.latest_degradation_mode, DEGRADATION_PHYSICS_PARAMS['healthy'])
-        r0 = float(phys['r0'])
+        self.frame_id_counter += 1
+        raw_physics = self.engine.step(dt=0.1)
+        r0 = float(self.engine.r0)
 
-        tof_us = self.latest_time_of_flight * 1e6
-        sos = (2.0 * 0.01) / (self.latest_time_of_flight) if self.latest_time_of_flight > 0 else float(phys['sos'])
+        tof_us = self.latest_time_of_flight * 1e6 if self.latest_time_of_flight > 0 else raw_physics["ultrasonic_timeOfFlight"]
+        sos = (2.0 * self.engine.acoustic_path_m) / (self.latest_time_of_flight) if self.latest_time_of_flight > 0 else raw_physics["ultrasonic_speedOfSound"]
         mode = self.latest_degradation_mode
 
         frame = {
             "timestamp": datetime.now().timestamp(),
-            "frameId": str(uuid.uuid4()),
+            "frameId": f"GZ-{self.frame_id_counter:06d}",
             "source": "gazebo",
-            "cellId": "cell_001",
-            "packId": "pack_001",
+            "data_origin": "GAZEBO-ROS2",
+            "cellId": f"cell_{self.engine.chemistry}_{self.engine.form_factor}",
+            "packId": "pack_gazebo_01",
+            "battery_chemistry": raw_physics["chemistry"],
+            "battery_chemistry_name": raw_physics["chemistry_name"],
+            "battery_form_factor": raw_physics["form_factor"],
+            "battery_form_factor_name": raw_physics["form_factor_name"],
 
             # Electrical data
-            "electrical_voltage": float(self.latest_voltage if self.latest_voltage > 0 else 3.0 + 1.2 * self.latest_soc - 0.5 * r0),
-            "electrical_current": float(self.latest_current if self.latest_current > 0 else self.latest_excitation_amplitude),
-            "electrical_power": float(self.latest_voltage * self.latest_current if self.latest_voltage > 0 else 1.85),
-            "electrical_resistance": r0,
-            "electrical_uncertainty": 0.01,
+            "electrical_voltage": float(self.latest_voltage if self.latest_voltage > 0 else raw_physics["electrical_voltage"]),
+            "electrical_current": float(self.latest_current if self.latest_current > 0 else raw_physics["electrical_current"]),
+            "electrical_power": float(self.latest_voltage * self.latest_current if self.latest_voltage > 0 else raw_physics["electrical_power"]),
+            "electrical_resistance": raw_physics["electrical_resistance"],
+            "electrical_uncertainty": raw_physics["electrical_uncertainty"],
 
             # Ultrasonic data
-            "ultrasonic_timeOfFlight": float(tof_us if tof_us > 0 else (2.0 * 0.01 / float(phys['sos'])) * 1e6),
-            "ultrasonic_amplitude": float(self.latest_ultrasonic_amplitude if self.latest_ultrasonic_amplitude > 0 else phys['attenuation']),
-            "ultrasonic_phaseShift": float(self.latest_ultrasonic_phase_shift if abs(self.latest_ultrasonic_phase_shift) > 0.001 else phys.get('phase_shift', 0.0)),
+            "ultrasonic_timeOfFlight": float(tof_us),
+            "ultrasonic_amplitude": float(self.latest_ultrasonic_amplitude if self.latest_ultrasonic_amplitude > 0 else raw_physics["ultrasonic_amplitude"]),
+            "ultrasonic_phaseShift": float(self.latest_ultrasonic_phase_shift if abs(self.latest_ultrasonic_phase_shift) > 0.001 else raw_physics["ultrasonic_phaseShift"]),
             "ultrasonic_speedOfSound": float(sos),
-            "ultrasonic_uncertainty": 0.1,
+            "ultrasonic_uncertainty": raw_physics["ultrasonic_uncertainty"],
 
             # Thermal data
-            "thermal_temperature": float(self.latest_temperature if self.latest_temperature > 20.0 else 25.0 + (10.0 if mode == 'internal_short' else 1.5)),
-            "thermal_tempGradient": 0.15 if mode != 'internal_short' else 3.5,
-            "thermal_heatFlux": float(self.latest_heat_flux),
-            "thermal_uncertainty": 0.5,
+            "thermal_temperature": float(self.latest_temperature if self.latest_temperature > 20.0 else raw_physics["thermal_temperature"]),
+            "thermal_tempGradient": raw_physics["thermal_tempGradient"],
+            "thermal_heatFlux": float(self.latest_heat_flux if self.latest_heat_flux > 0 else raw_physics["thermal_heatFlux"]),
+            "thermal_uncertainty": raw_physics["thermal_uncertainty"],
 
-            # State of Health (placeholder - will be updated by ML pipeline)
-            "stateOfHealth_value": 0.0,
-            "stateOfHealth_confidenceInterval_lower": 0.0,
-            "stateOfHealth_confidenceInterval_upper": 0.0,
-            "stateOfHealth_method": "pending",
+            # State of Health (calculated by ML)
+            "stateOfHealth_value": raw_physics["stateOfHealth_physical_ground_truth"],
+            "stateOfHealth_confidenceInterval_lower": max(0.0, raw_physics["stateOfHealth_physical_ground_truth"] - 3.0),
+            "stateOfHealth_confidenceInterval_upper": min(100.0, raw_physics["stateOfHealth_physical_ground_truth"] + 3.0),
+            "stateOfHealth_method": "multi_modal_fusion",
 
             # Degradation classification
             "degradation_mode": mode,
             "degradation_probability": 0.95,
-            "degradation_perClass_healthy": 0.95 if mode == 'healthy' else 0.02,
-            "degradation_perClass_li_plating": 0.95 if mode == 'li_plating' else 0.02,
-            "degradation_perClass_active_material_loss": 0.95 if mode == 'active_material_loss' else 0.02,
-            "degradation_perClass_electrolyte_decomposition": 0.95 if mode == 'electrolyte_decomposition' else 0.02,
-            "degradation_perClass_gas_generation": 0.95 if mode == 'gas_generation' else 0.02,
-            "degradation_perClass_internal_short": 0.95 if mode == 'internal_short' else 0.02,
+            "degradation_perClass_healthy": 0.95 if mode == 'healthy' else 0.01,
+            "degradation_perClass_li_plating": 0.95 if mode == 'li_plating' else 0.01,
+            "degradation_perClass_active_material_loss": 0.95 if mode == 'active_material_loss' else 0.01,
+            "degradation_perClass_electrolyte_decomposition": 0.95 if mode == 'electrolyte_decomposition' else 0.01,
+            "degradation_perClass_gas_generation": 0.95 if mode == 'gas_generation' else 0.01,
+            "degradation_perClass_internal_short": 0.95 if mode == 'internal_short' else 0.01,
             "degradation_entropy": 0.05,
 
-            # Rebalancing state (placeholder)
-            "rebalancing_state": "idle",
+            # Rebalancing state
+            "rebalancing_state": "monitoring",
             "rebalancing_selectedAction": "none",
-            "rebalancing_actionReason": "Pending ML results",
-            "rebalancing_powerStage_targetCurrent": 0.0,
-            "rebalancing_powerStage_actualCurrent": 0.0,
-            "rebalancing_powerStage_targetVoltage": 0.0,
-            "rebalancing_powerStage_actualVoltage": 0.0,
-            "rebalancing_powerStage_pwmDutyCycle": 0.0,
-            "rebalancing_executionTime": 0.0,
-
-            # Simulation fields (from latest parameters)
-            "simulation_soc": self.latest_soc,
-            "simulation_excitationAmplitude": self.latest_excitation_amplitude,
-            "simulation_noiseLevel": self.latest_noise_level,
-            "simulation_stepCount": self.frame_id_counter
-        }
-
-        self.frame_id_counter += 1
-        diag = DiagnosticFrame.from_dict(frame)
-        return diag.to_dict()
-
-    def _simulate_frame(self) -> Dict[str, Any]:
-        """Simulate a frame when Gazebo/ROS 2 is not available."""
-        self.frame_id_counter += 1
-        phys = DEGRADATION_PHYSICS_PARAMS.get(self.degradation_mode, DEGRADATION_PHYSICS_PARAMS['healthy'])
-        
-        noise_factor = float(self.noise_level)
-        r0 = float(phys['r0'] * (1.0 + random.uniform(-0.02, 0.02) * noise_factor))
-        r1 = float(phys['r1'] * (1.0 + random.uniform(-0.02, 0.02) * noise_factor))
-        sos = float(phys['sos'] + random.uniform(-10.0, 10.0) * noise_factor)
-        attenuation = float(np.clip(phys['attenuation'] + random.uniform(-0.015, 0.015) * noise_factor, 0.15, 1.15))
-        phase_shift = float(phys.get('phase_shift', 0.0) + random.uniform(-0.02, 0.02) * noise_factor)
-        r_th = float(phys.get('r_th', 2.0) * (1.0 + random.uniform(-0.02, 0.02) * noise_factor))
-        c_th = float(phys.get('c_th', 500.0) * (1.0 + random.uniform(-0.02, 0.02) * noise_factor))
-
-        i_pulse = float(self.excitation_amplitude)
-        ocv = float(3.0 + 1.2 * np.clip(self.soc, 0.0, 1.0))
-        voltage = float(ocv - i_pulse * r0 + random.uniform(-0.002, 0.002) * noise_factor)
-        current = float(i_pulse + random.uniform(-0.005, 0.005) * noise_factor)
-        power = float(voltage * current)
-
-        tof_s = float(2.0 * 0.01 / max(100.0, sos))
-        tof_us = float(tof_s * 1e6)
-
-        ambient_temp = 25.0 + (10.0 if self.degradation_mode == 'internal_short' else 0.0)
-        temp_rise = float((r0 + r1) * (i_pulse ** 2) * r_th * 30.0 + max(0.0, ambient_temp - 25.0) + random.uniform(-0.05, 0.05) * noise_factor)
-        temperature = float(25.0 + temp_rise)
-        dT_dt = float((i_pulse ** 2) * (r0 + r1) * 50.0 / (c_th * 1e-2) + random.uniform(-0.01, 0.01) * noise_factor)
-
-        frame = {
-            "timestamp": datetime.now().timestamp(),
-            "frameId": str(uuid.uuid4()),
-            "source": "gazebo",
-            "cellId": "cell_001",
-            "packId": "pack_001",
-
-            # Electrical data
-            "electrical_voltage": voltage,
-            "electrical_current": current,
-            "electrical_power": power,
-            "electrical_resistance": r0,
-            "electrical_uncertainty": 0.01,
-
-            # Ultrasonic data
-            "ultrasonic_timeOfFlight": tof_us,
-            "ultrasonic_amplitude": attenuation,
-            "ultrasonic_phaseShift": phase_shift,
-            "ultrasonic_speedOfSound": sos,
-            "ultrasonic_uncertainty": 0.1,
-
-            # Thermal data
-            "thermal_temperature": temperature,
-            "thermal_tempGradient": dT_dt,
-            "thermal_heatFlux": 10.0,
-            "thermal_uncertainty": 0.5,
-
-            # State of Health (placeholder)
-            "stateOfHealth_value": 0.0,
-            "stateOfHealth_confidenceInterval_lower": 0.0,
-            "stateOfHealth_confidenceInterval_upper": 0.0,
-            "stateOfHealth_method": "pending",
-
-            # Degradation classification
-            "degradation_mode": self.degradation_mode,
-            "degradation_probability": 0.95,
-            "degradation_perClass_healthy": 0.95 if self.degradation_mode == 'healthy' else 0.02,
-            "degradation_perClass_li_plating": 0.95 if self.degradation_mode == 'li_plating' else 0.02,
-            "degradation_perClass_active_material_loss": 0.95 if self.degradation_mode == 'active_material_loss' else 0.02,
-            "degradation_perClass_electrolyte_decomposition": 0.95 if self.degradation_mode == 'electrolyte_decomposition' else 0.02,
-            "degradation_perClass_gas_generation": 0.95 if self.degradation_mode == 'gas_generation' else 0.02,
-            "degradation_perClass_internal_short": 0.95 if self.degradation_mode == 'internal_short' else 0.02,
-            "degradation_entropy": 0.05,
-
-            # Rebalancing state (placeholder)
-            "rebalancing_state": "idle",
-            "rebalancing_selectedAction": "none",
-            "rebalancing_actionReason": "Pending ML results",
+            "rebalancing_actionReason": "Nominal telemetry",
             "rebalancing_powerStage_targetCurrent": 0.0,
             "rebalancing_powerStage_actualCurrent": 0.0,
             "rebalancing_powerStage_targetVoltage": 0.0,
@@ -409,9 +401,90 @@ class GazeboIngestor:
             "rebalancing_executionTime": 0.0,
 
             # Simulation fields
-            "simulation_soc": self.soc,
-            "simulation_excitationAmplitude": self.excitation_amplitude,
-            "simulation_noiseLevel": self.noise_level,
+            "simulation_soc": raw_physics["simulation_soc"],
+            "simulation_temp_amb": raw_physics["simulation_temp_amb"],
+            "simulation_load_c": raw_physics["simulation_load_c"],
+            "simulation_cycle_count": raw_physics["simulation_cycle_count"],
+            "simulation_noiseLevel": raw_physics["simulation_noiseLevel"],
+            "simulation_excitationAmplitude": raw_physics["simulation_excitationAmplitude"],
+            "simulation_stepCount": self.frame_id_counter
+        }
+
+        diag = DiagnosticFrame.from_dict(frame)
+        return diag.to_dict()
+
+    def _simulate_frame(self) -> Dict[str, Any]:
+        """Simulate a frame when Gazebo/ROS 2 is not available using the dynamic physics model."""
+        self.frame_id_counter += 1
+        raw_physics = self.engine.step(dt=0.1)
+
+        frame = {
+            "timestamp": raw_physics["timestamp"],
+            "frameId": f"GZ-SIM-{self.frame_id_counter:06d}",
+            "source": "gazebo",
+            "data_origin": "GAZEBO-PHYSICS-TWIN",
+            "cellId": f"cell_{self.engine.chemistry}_{self.engine.form_factor}",
+            "packId": "pack_gazebo_01",
+            "battery_chemistry": raw_physics["chemistry"],
+            "battery_chemistry_name": raw_physics["chemistry_name"],
+            "battery_form_factor": raw_physics["form_factor"],
+            "battery_form_factor_name": raw_physics["form_factor_name"],
+
+            # Electrical data
+            "electrical_voltage": raw_physics["electrical_voltage"],
+            "electrical_current": raw_physics["electrical_current"],
+            "electrical_power": raw_physics["electrical_power"],
+            "electrical_resistance": raw_physics["electrical_resistance"],
+            "electrical_uncertainty": raw_physics["electrical_uncertainty"],
+
+            # Ultrasonic data
+            "ultrasonic_timeOfFlight": raw_physics["ultrasonic_timeOfFlight"],
+            "ultrasonic_amplitude": raw_physics["ultrasonic_amplitude"],
+            "ultrasonic_phaseShift": raw_physics["ultrasonic_phaseShift"],
+            "ultrasonic_speedOfSound": raw_physics["ultrasonic_speedOfSound"],
+            "ultrasonic_uncertainty": raw_physics["ultrasonic_uncertainty"],
+
+            # Thermal data
+            "thermal_temperature": raw_physics["thermal_temperature"],
+            "thermal_tempGradient": raw_physics["thermal_tempGradient"],
+            "thermal_heatFlux": raw_physics["thermal_heatFlux"],
+            "thermal_uncertainty": raw_physics["thermal_uncertainty"],
+
+            # State of Health
+            "stateOfHealth_value": raw_physics["stateOfHealth_physical_ground_truth"],
+            "stateOfHealth_confidenceInterval_lower": max(0.0, raw_physics["stateOfHealth_physical_ground_truth"] - 3.0),
+            "stateOfHealth_confidenceInterval_upper": min(100.0, raw_physics["stateOfHealth_physical_ground_truth"] + 3.0),
+            "stateOfHealth_method": "multi_modal_fusion",
+
+            # Degradation classification
+            "degradation_mode": raw_physics["degradation_mode"],
+            "degradation_probability": 0.95,
+            "degradation_perClass_healthy": 0.95 if raw_physics["degradation_mode"] == 'healthy' else 0.01,
+            "degradation_perClass_li_plating": 0.95 if raw_physics["degradation_mode"] == 'li_plating' else 0.01,
+            "degradation_perClass_active_material_loss": 0.95 if raw_physics["degradation_mode"] == 'active_material_loss' else 0.01,
+            "degradation_perClass_electrolyte_decomposition": 0.95 if raw_physics["degradation_mode"] == 'electrolyte_decomposition' else 0.01,
+            "degradation_perClass_gas_generation": 0.95 if raw_physics["degradation_mode"] == 'gas_generation' else 0.01,
+            "degradation_perClass_internal_short": 0.95 if raw_physics["degradation_mode"] == 'internal_short' else 0.01,
+            "degradation_entropy": 0.05,
+
+            # Rebalancing state
+            "rebalancing_state": "monitoring",
+            "rebalancing_selectedAction": "none",
+            "rebalancing_actionReason": "Nominal telemetry",
+            "rebalancing_powerStage_targetCurrent": 0.0,
+            "rebalancing_powerStage_actualCurrent": 0.0,
+            "rebalancing_powerStage_targetVoltage": 0.0,
+            "rebalancing_powerStage_actualVoltage": 0.0,
+            "rebalancing_powerStage_pwmDutyCycle": 0.0,
+            "rebalancing_executionTime": 0.0,
+
+            # Controllable simulation parameters
+            "simulation_soc": raw_physics["simulation_soc"],
+            "simulation_temp_amb": raw_physics["simulation_temp_amb"],
+            "simulation_load_c": raw_physics["simulation_load_c"],
+            "simulation_cycle_count": raw_physics["simulation_cycle_count"],
+            "simulation_noiseLevel": raw_physics["simulation_noiseLevel"],
+            "simulation_excitationAmplitude": raw_physics["simulation_excitationAmplitude"],
             "simulation_stepCount": self.frame_id_counter
         }
 

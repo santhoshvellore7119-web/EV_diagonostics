@@ -16,13 +16,22 @@ import json
 # Add the project root to the path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from core.physics_engine import simulate_cell_response
-from core.virtual_daq import VirtualDAQ
-from models.fusion_net import MultiBranchFusionNet, BaselineFusionNet
-from models.train import train_model
-from models.evaluate import evaluate_model
-from control.decision_engine import DecisionEngine
-from config import params as P
+try:
+    from ev_cell_multimodal_sim.core.physics_engine import simulate_cell_response
+    from ev_cell_multimodal_sim.core.virtual_daq import VirtualDAQ
+    from ev_cell_multimodal_sim.models.fusion_net import MultiBranchFusionNet, BaselineFusionNet
+    from ev_cell_multimodal_sim.models.train import train_model
+    from ev_cell_multimodal_sim.models.evaluate import evaluate_model
+    from ev_cell_multimodal_sim.control.decision_engine import DecisionEngine
+    from ev_cell_multimodal_sim.config import params as P
+except ImportError:
+    from core.physics_engine import simulate_cell_response
+    from core.virtual_daq import VirtualDAQ
+    from models.fusion_net import MultiBranchFusionNet, BaselineFusionNet
+    from models.train import train_model
+    from models.evaluate import evaluate_model
+    from control.decision_engine import DecisionEngine
+    from config import params as P
 
 # Module-level mapping
 MODE_TO_IDX = {

@@ -24,12 +24,21 @@ class SafetyStatusEnum(str, Enum):
     WARNING_ELEVATED_RISK = 'WARNING_ELEVATED_RISK'
     CRITICAL_LOCKOUT_ISOLATED = 'CRITICAL_LOCKOUT_ISOLATED'
 
+class DataOriginEnum(str, Enum):
+    LIVE = 'LIVE'
+    FMU = 'FMU'
+    FALLBACK = 'FALLBACK'
+    THREED_SIM = '3D-SIM'
+    GAZEBO = 'GAZEBO'
+    SIMULINK = 'SIMULINK'
+
 @dataclass
 class DiagnosticFrame:
     # --- Identification & Metadata ---
     timestamp: float = field(default_factory=time.time)
     frameId: str = field(default_factory=lambda: str(uuid.uuid4()))
     source: str = '3d'
+    data_origin: str = 'LIVE'  # 'FMU', 'FALLBACK', '3D-SIM', 'GAZEBO', 'LIVE', 'SIMULINK'
     cellId: str = 'CELL_001'
     packId: str = 'PACK_001'
 
@@ -79,6 +88,7 @@ class DiagnosticFrame:
 
     # --- Active Rebalancing & Power Stage ---
     rebalancing_state: str = 'IDLE'
+    rebalancing_active: bool = False
     rebalancing_selectedAction: str = 'none'
     rebalancing_actionReason: str = 'System operating nominally'
     rebalancing_safetyInterlock_engaged: bool = False
@@ -89,6 +99,7 @@ class DiagnosticFrame:
     rebalancing_powerStage_actualVoltage: float = 0.0
     rebalancing_powerStage_pwmDutyCycle: float = 0.0
     rebalancing_executionTime: float = 0.0
+    zvs_efficiency_pct: float = 0.0
 
     # --- Simulation Metadata (Optional) ---
     simulation_soc: Optional[float] = None

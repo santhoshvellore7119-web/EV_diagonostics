@@ -15,9 +15,14 @@ from datetime import datetime
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from core.cell_database import CellDatabase
-from models.fusion_net import MultiBranchFusionNet, BaselineFusionNet
-from config import params as P
+try:
+    from ev_cell_multimodal_sim.core.cell_database import CellDatabase
+    from ev_cell_multimodal_sim.models.fusion_net import MultiBranchFusionNet, BaselineFusionNet
+    from ev_cell_multimodal_sim.config import params as P
+except ImportError:
+    from core.cell_database import CellDatabase
+    from models.fusion_net import MultiBranchFusionNet, BaselineFusionNet
+    from config import params as P
 
 
 def gaussian_nll_loss(pred_mean, pred_var, target):

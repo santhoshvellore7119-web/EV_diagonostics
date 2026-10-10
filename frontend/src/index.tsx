@@ -5,6 +5,7 @@ import { store } from './store';
 import { websocketService } from './services/websocketService';
 import './index.css';
 import App from './App';
+import ErrorBoundary from './components/ErrorBoundary';
 import reportWebVitals from './reportWebVitals';
 
 // Initialize WebSocket connection to backend
@@ -15,9 +16,11 @@ const root = ReactDOM.createRoot(
 );
 root.render(
   <React.StrictMode>
-    <Provider store={store}>
-      <App />
-    </Provider>
+    <ErrorBoundary>
+      <Provider store={store}>
+        <App />
+      </Provider>
+    </ErrorBoundary>
   </React.StrictMode>
 );
 

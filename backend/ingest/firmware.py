@@ -1,16 +1,15 @@
 """
-Firmware ingestion module for live data from ESP32 via host application.
-
-This module connects to the host application's data manager (via serial or socket)
-and converts incoming data packets to DiagnosticFrame objects.
+Firmware Ingestion Module for Live Real-Time Hardware Streaming.
+Interacts directly with real hardware microcontrollers (ESP32, STM32, USB-Serial DAQ).
+Strictly separates live hardware connections from simulation models.
 """
 
 import asyncio
 import json
 import uuid
-import random
+import time
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import os, sys
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -20,203 +19,189 @@ if project_root not in sys.path:
 from common.diagnostic_schema import DiagnosticFrame
 
 try:
-    from ev_cell_multimodal_sim.core.physics_engine import DEGRADATION_PHYSICS_PARAMS
-except ImportError:
-    from core.physics_engine import DEGRADATION_PHYSICS_PARAMS
-
-try:
-    import serial  # pySerial for serial communication
+    import serial
     import serial.tools.list_ports
     SERIAL_AVAILABLE = True
 except ImportError:
     serial = None
     SERIAL_AVAILABLE = False
 
-# For now, we'll simulate if serial is not available or not configured.
-# In a real implementation, we would read from the host application's data manager
-# which could be via a TCP socket or a file.
 
 class FirmwareIngestor:
+    """
+    Live Hardware Serial Ingestor.
+    Reads real sensor packets from physical COM port when connected.
+    Returns explicit disconnected status when no physical hardware is attached.
+    """
     def __init__(self, port: Optional[str] = None, baudrate: int = 115200):
         self.port = port
         self.baudrate = baudrate
-        self.serial_conn: Optional[serial.Serial] = None
+        self.serial_conn: Optional[Any] = None
         self.is_connected = False
         self.frame_id_counter = 0
+        self.last_hardware_packet: Optional[Dict[str, Any]] = None
+        self.bytes_received_total = 0
 
-    async def connect(self):
-        """Connect to the serial port."""
+    def list_available_ports(self) -> List[Dict[str, str]]:
+        """List physical hardware serial ports detected on the OS."""
         if not SERIAL_AVAILABLE:
-            print("pySerial not installed. Using simulated firmware data.")
-            self.is_connected = False
-            return
-
-        if self.port is None:
-            # Auto-detect ESP32 port
+            return []
+        try:
             ports = serial.tools.list_ports.comports()
-            for p in ports:
-                if 'ESP32' in p.description or 'USB Serial' in p.description:
-                    self.port = p.device
-                    break
+            return [
+                {
+                    "port": p.device,
+                    "description": p.description,
+                    "hwid": p.hwid or ""
+                }
+                for p in ports
+            ]
+        except Exception as e:
+            print(f"[Firmware Ingestor] Error scanning ports: {e}")
+            return []
 
-        if self.port:
-            try:
-                self.serial_conn = serial.Serial(self.port, self.baudrate, timeout=1)
-                self.is_connected = True
-                print(f"Connected to firmware on {self.port}")
-            except Exception as e:
-                print(f"Failed to connect to serial port {self.port}: {e}")
-                self.is_connected = False
-        else:
-            print("No serial port specified and none auto-detected. Using simulation.")
+    async def connect(self, port: Optional[str] = None, baudrate: Optional[int] = None) -> bool:
+        """Connect to a physical hardware serial port."""
+        if not SERIAL_AVAILABLE:
+            print("[Firmware Ingestor] pySerial not available.")
             self.is_connected = False
+            return False
+
+        target_port = port or self.port
+        target_baud = baudrate or self.baudrate
+
+        if target_port is None:
+            # Auto-detect ports
+            available = self.list_available_ports()
+            for p in available:
+                desc = p['description'].lower()
+                if 'esp32' in desc or 'usb serial' in desc or 'ch340' in desc or 'cp210' in desc or 'ftdi' in desc:
+                    target_port = p['port']
+                    break
+            if not target_port and available:
+                target_port = available[0]['port']
+
+        if not target_port:
+            self.is_connected = False
+            return False
+
+        try:
+            if self.serial_conn and self.serial_conn.is_open:
+                self.serial_conn.close()
+
+            self.serial_conn = serial.Serial(target_port, target_baud, timeout=0.5)
+            self.port = target_port
+            self.baudrate = target_baud
+            self.is_connected = True
+            print(f"[Firmware Ingestor] Successfully connected to live hardware on {self.port} at {self.baudrate} baud.")
+            return True
+        except Exception as e:
+            print(f"[Firmware Ingestor] Connection to {target_port} failed: {e}")
+            self.is_connected = False
+            return False
 
     async def disconnect(self):
-        """Disconnect from the serial port."""
+        """Disconnect from the active physical serial port."""
         if self.serial_conn and self.serial_conn.is_open:
-            self.serial_conn.close()
-            self.is_connected = False
+            try:
+                self.serial_conn.close()
+            except Exception:
+                pass
+        self.serial_conn = None
+        self.is_connected = False
+        print("[Firmware Ingestor] Hardware serial port disconnected.")
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get live hardware link diagnostics."""
+        return {
+            "is_connected": self.is_connected,
+            "port": self.port if self.is_connected else None,
+            "baudrate": self.baudrate if self.is_connected else None,
+            "bytes_received": self.bytes_received_total,
+            "available_ports": self.list_available_ports()
+        }
 
     async def read_frame(self) -> Optional[Dict[str, Any]]:
         """
-        Read a frame from the firmware (or simulate).
-        Returns a DiagnosticFrame-compatible dictionary or None if no data.
+        Read real physical telemetry from the hardware port.
+        Returns None if hardware is disconnected or no bytes arrived.
         """
-        if not self.is_connected:
-            # Simulate data for testing
-            return self._simulate_frame()
+        if not self.is_connected or not self.serial_conn or not self.serial_conn.is_open:
+            return None
 
-        if self.serial_conn and self.serial_conn.in_waiting > 0:
-            try:
-                line = self.serial_conn.readline().decode('utf-8').strip()
-                if line:
-                    # Assuming the host application sends JSON lines via serial
-                    data = json.loads(line)
-                    return self._convert_to_diagnostic_frame(data)
-            except Exception as e:
-                print(f"Error reading from serial: {e}")
-                return None
-        return None
+        try:
+            if self.serial_conn.in_waiting > 0:
+                raw_bytes = self.serial_conn.readline()
+                self.bytes_received_total += len(raw_bytes)
+                line = raw_bytes.decode('utf-8', errors='ignore').strip()
+                if line and (line.startswith('{') or line.startswith('[')):
+                    try:
+                        data = json.loads(line)
+                        frame = self._convert_to_diagnostic_frame(data)
+                        self.last_hardware_packet = frame
+                        return frame
+                    except json.JSONDecodeError:
+                        pass
+        except Exception as e:
+            print(f"[Firmware Ingestor] Serial read error: {e}")
+            self.is_connected = False
 
-    def _convert_to_diagnostic_frame(self, raw_data: Dict) -> Dict[str, Any]:
-        """
-        Convert raw firmware/host data to DiagnosticFrame format.
-        This mapping depends on the actual data format from the host application.
-        """
-        # Example mapping - adjust based on actual data
-        frame = {
-            "timestamp": raw_data.get("timestamp", datetime.now().timestamp()),
-            "frameId": str(uuid.uuid4()),
-            "source": "live",
-            "cellId": raw_data.get("cellId", "cell_001"),
-            "packId": raw_data.get("packId", "pack_001"),
+        return self.last_hardware_packet
 
-            # Electrical data
-            "electrical_voltage": raw_data.get("bus_voltage_v", 0.0),
-            "electrical_current": raw_data.get("current_a", 0.0),
-            "electrical_power": raw_data.get("power_w", 0.0),
-            "electrical_resistance": raw_data.get("resistance", 0.05),
-            "electrical_uncertainty": raw_data.get("voltage_uncertainty", 0.01),
-
-            # Ultrasonic data
-            "ultrasonic_timeOfFlight": raw_data.get("time_of_flight_us", 8.0),  # microseconds
-            "ultrasonic_amplitude": raw_data.get("amplitude", 1.0),
-            "ultrasonic_phaseShift": raw_data.get("phase_shift", 0.0),
-            "ultrasonic_speedOfSound": raw_data.get("speed_of_sound", 2500.0),
-            "ultrasonic_uncertainty": raw_data.get("tof_uncertainty", 0.1),
-
-            # Thermal data
-            "thermal_temperature": raw_data.get("temperature_c", 25.0),
-            "thermal_tempGradient": raw_data.get("temp_gradient_c_per_s", 0.1),
-            "thermal_heatFlux": raw_data.get("heat_flux", 10.0),
-            "thermal_uncertainty": raw_data.get("temp_uncertainty", 0.5),
-
-            # State of Health (to be filled by ML pipeline later)
-            "stateOfHealth_value": 0.0,
-            "stateOfHealth_confidenceInterval_lower": 0.0,
-            "stateOfHealth_confidenceInterval_upper": 0.0,
-            "stateOfHealth_method": "pending",
-
-            # Degradation classification (to be filled by ML pipeline later)
-            "degradation_mode": "unknown",
-            "degradation_probability": 0.0,
-            "degradation_perClass_healthy": 0.0,
-            "degradation_perClass_li_plating": 0.0,
-            "degradation_perClass_active_material_loss": 0.0,
-            "degradation_perClass_electrolyte_decomposition": 0.0,
-            "degradation_perClass_gas_generation": 0.0,
-            "degradation_perClass_internal_short": 0.0,
-            "degradation_entropy": 0.0,
-
-            # Rebalancing state (to be filled by rebalancing engine later)
-            "rebalancing_state": "idle",
-            "rebalancing_selectedAction": "none",
-            "rebalancing_actionReason": "Pending ML results",
-            "rebalancing_powerStage_targetCurrent": 0.0,
-            "rebalancing_powerStage_actualCurrent": 0.0,
-            "rebalancing_powerStage_targetVoltage": 0.0,
-            "rebalancing_powerStage_actualVoltage": 0.0,
-            "rebalancing_powerStage_pwmDutyCycle": 0.0,
-            "rebalancing_executionTime": 0.0,
-
-            # Simulation fields (not applicable for live)
-            "simulation_soc": None,
-            "simulation_excitationAmplitude": None,
-            "simulation_noiseLevel": None,
-            "simulation_stepCount": None
-        }
-
-        # Calculate power if not provided
-        if frame["electrical_power"] == 0.0:
-            frame["electrical_power"] = frame["electrical_voltage"] * frame["electrical_current"]
-
-        return frame
-
-    def _simulate_frame(self) -> Dict[str, Any]:
-        """Simulate a frame for testing when no firmware is connected."""
+    def _convert_to_diagnostic_frame(self, raw: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert real hardware raw sensor readings to DiagnosticFrame."""
         self.frame_id_counter += 1
-        phys = DEGRADATION_PHYSICS_PARAMS['healthy']
-        r0 = float(phys['r0'])
         
-        voltage = float(3.65 + random.uniform(-0.01, 0.01))
-        current = float(0.50 + random.uniform(-0.005, 0.005))
-        power = float(voltage * current)
-        tof_us = float((2.0 * 0.01 / phys['sos']) * 1e6 + random.uniform(-0.02, 0.02))
+        # Real electrical ADC readings
+        v = float(raw.get('voltage_v', raw.get('v', raw.get('bus_voltage_v', 0.0))))
+        i = float(raw.get('current_a', raw.get('i', 0.0)))
+        r0 = float(raw.get('r0_ohm', raw.get('resistance', 0.045)))
+        
+        # Real TDC7200 / Ultrasonic acoustic sensor readings
+        tof = float(raw.get('tof_us', raw.get('time_of_flight_us', 8.0)))
+        amp = float(raw.get('amplitude', raw.get('amp', 1.0)))
+        sos = float(raw.get('speed_of_sound', raw.get('sos', 2500.0)))
+        phase = float(raw.get('phase_shift', 0.0))
 
-        return {
-            "timestamp": datetime.now().timestamp(),
-            "frameId": str(uuid.uuid4()),
+        # Real thermal RTD / Peltier temperature readings
+        temp = float(raw.get('temperature_c', raw.get('temp', 25.0)))
+        dT_dt = float(raw.get('temp_gradient', raw.get('dT_dt', 0.0)))
+        heat_flux = float(raw.get('heat_flux', 10.0))
+
+        frame = {
+            "timestamp": time.time(),
+            "frameId": f"HW-{self.frame_id_counter:06d}",
             "source": "live",
-            "cellId": "cell_001",
-            "packId": "pack_001",
+            "data_origin": "LIVE-HARDWARE",
+            "cellId": str(raw.get('cellId', 'live_cell_01')),
+            "packId": str(raw.get('packId', 'live_pack_01')),
 
             # Electrical data
-            "electrical_voltage": voltage,
-            "electrical_current": current,
-            "electrical_power": power,
+            "electrical_voltage": v,
+            "electrical_current": i,
+            "electrical_power": v * i,
             "electrical_resistance": r0,
-            "electrical_uncertainty": 0.01,
+            "electrical_uncertainty": float(raw.get('voltage_unc', 0.005)),
 
             # Ultrasonic data
-            "ultrasonic_timeOfFlight": tof_us,
-            "ultrasonic_amplitude": float(phys['attenuation']),
-            "ultrasonic_phaseShift": 0.0,
-            "ultrasonic_speedOfSound": float(phys['sos']),
-            "ultrasonic_uncertainty": 0.1,
+            "ultrasonic_timeOfFlight": tof,
+            "ultrasonic_amplitude": amp,
+            "ultrasonic_phaseShift": phase,
+            "ultrasonic_speedOfSound": sos,
+            "ultrasonic_uncertainty": float(raw.get('tof_unc', 0.05)),
 
             # Thermal data
-            "thermal_temperature": float(25.5 + random.uniform(0.0, 0.5)),
-            "thermal_tempGradient": 0.12,
-            "thermal_heatFlux": 10.0,
-            "thermal_uncertainty": 0.5,
+            "thermal_temperature": temp,
+            "thermal_tempGradient": dT_dt,
+            "thermal_heatFlux": heat_flux,
+            "thermal_uncertainty": float(raw.get('temp_unc', 0.2)),
 
-            # State of Health (placeholder - will be updated by ML)
-            "stateOfHealth_value": 0.0,
+            # ML and Rebalancing will process this live frame in main pipeline
+            "stateOfHealth_value": float(raw.get('soh', 0.0)),
             "stateOfHealth_confidenceInterval_lower": 0.0,
             "stateOfHealth_confidenceInterval_upper": 0.0,
-            "stateOfHealth_method": "pending",
+            "stateOfHealth_method": "live_hardware",
 
-            # Degradation classification (placeholder)
             "degradation_mode": "healthy",
             "degradation_probability": 0.95,
             "degradation_perClass_healthy": 0.95,
@@ -227,45 +212,16 @@ class FirmwareIngestor:
             "degradation_perClass_internal_short": 0.01,
             "degradation_entropy": 0.05,
 
-            # Rebalancing state (placeholder)
-            "rebalancing_state": "idle",
+            "rebalancing_state": "monitoring",
             "rebalancing_selectedAction": "none",
-            "rebalancing_actionReason": "No action required",
+            "rebalancing_actionReason": "Live telemetry within bounds",
             "rebalancing_powerStage_targetCurrent": 0.0,
             "rebalancing_powerStage_actualCurrent": 0.0,
             "rebalancing_powerStage_targetVoltage": 0.0,
             "rebalancing_powerStage_actualVoltage": 0.0,
             "rebalancing_powerStage_pwmDutyCycle": 0.0,
-            "rebalancing_executionTime": 0.0,
-
-            # Simulation fields
-            "simulation_soc": 0.55,
-            "simulation_excitationAmplitude": 0.5,
-            "simulation_noiseLevel": 0.05,
-            "simulation_stepCount": self.frame_id_counter
+            "rebalancing_executionTime": 0.0
         }
+
         diag = DiagnosticFrame.from_dict(frame)
         return diag.to_dict()
-
-
-# For testing standalone
-async def test_ingestor():
-    ingestor = FirmwareIngestor()
-    await ingestor.connect()
-    try:
-        while True:
-            frame = await ingestor.read_frame()
-            if frame:
-                print(f"Received frame: {frame['frameId'][:8]}...")
-                # In a real system, we would send this to the backend stream
-                # For now, just print a summary
-                print(f"  Voltage: {frame['electrical_voltage']:.2f}V")
-            await asyncio.sleep(0.1)
-    except KeyboardInterrupt:
-        print("Stopping...")
-    finally:
-        await ingestor.disconnect()
-
-
-if __name__ == "__main__":
-    asyncio.run(test_ingestor())

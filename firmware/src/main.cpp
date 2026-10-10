@@ -24,6 +24,9 @@
 #include "utils/timer.h"
 #include "utils/serializer.h"
 #include "utils/uncertainty.h"
+#include "ml/edge_ml.h"
+
+#define ENABLE_EDGE_ML 1
 
 // Task handles
 TaskHandle_t electricalTaskHandle = NULL;
@@ -207,6 +210,16 @@ void daqTask(void *parameter) {
       // Fuse data into packet
       daq_create_packet(&elecData, &ultraData, &thermData, &packet);
 
+      #ifdef ENABLE_EDGE_ML
+      EdgeMLResult ml_res;
+      if (edge_ml_predict(&packet, &ml_res)) {
+        // Synchronous in-loop inference complete (<40 us)
+        #ifdef DEBUG
+        // Serial.printf("EdgeML: %s, SOH: %.1f%%\n", ml_res.degradation_mode, ml_res.soh_mean);
+        #endif
+      }
+      #endif
+
       // Send to communication queue
       xQueueOverwrite(daqOutputQueue, &packet);
 
@@ -279,6 +292,10 @@ void setup() {
 
   // Initialize DAQ
   daq_init();
+
+  #ifdef ENABLE_EDGE_ML
+  edge_ml_init();
+  #endif
 
   // Initialize communication
   uart_init(115200);

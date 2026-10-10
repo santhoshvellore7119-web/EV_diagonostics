@@ -10,28 +10,26 @@ interface TemperatureChartProps {
 
 const TemperatureChart: React.FC<TemperatureChartProps> = ({ width = 300, height = 150 }) => {
   const frame = useSelector((state: RootState) => state.diagnosticFrame.frame);
-  const { frameBufferLength } = useSelector((state: RootState) => state.timeline);
+  const history = useSelector((state: RootState) => state.diagnosticFrame.history);
 
-  const historicalData = [];
+  // Map true historical data from Redux ring buffer
+  const historicalData = history.map((f, idx) => ({
+    x: idx,
+    y: f.thermal_temperature || 25.0
+  }));
 
-  if (frame && frameBufferLength > 0) {
-    const baseTemp = frame.thermal_temperature || 25;
-    for (let i = 0; i < Math.min(frameBufferLength, 50); i++) {
-      // Simulate temperature varying with operation
-      const variation = Math.sin(i * 0.2) * 3;
-      const temperature = baseTemp + variation;
-      historicalData.push({ x: i, y: temperature });
-    }
+  if (historicalData.length === 0 && frame) {
+    historicalData.push({ x: 0, y: frame.thermal_temperature || 25.0 });
   }
 
   return (
     <div className="chart-container">
-      <div className="chart-title">Temperature Trend</div>
+      <div className="chart-title">Temperature Trend (Ring Buffer)</div>
       <LineChart
         data={historicalData}
         width={width}
         height={height}
-        xLabel="Time (samples)"
+        xLabel="Buffer Frame"
         yLabel="Temperature (°C)"
         strokeColor="#ef4444"
         showPoints={false}

@@ -6,7 +6,10 @@ Updated to include a to_csv export function for cross-validation with MATLAB.
 
 import numpy as np
 import csv
-from config import params as P
+try:
+    from ev_cell_multimodal_sim.config import params as P
+except ImportError:
+    from config import params as P
 
 
 def simulate_ocv(soc):
@@ -181,6 +184,7 @@ def simulate_thermal_response(current_pulse, soc, degradation_mode, dt):
 
 
 # Canonical Degradation Parameter Regimes
+# Canonical Degradation Parameter Regimes
 DEGRADATION_PHYSICS_PARAMS = {
     'healthy': {
         'r0': 0.045, 'r1': 0.020, 'c1': 2000.0,
@@ -193,13 +197,13 @@ DEGRADATION_PHYSICS_PARAMS = {
         'r_th': 2.1, 'c_th': 500.0, 'gas_reverb': False, 'nominal_soh': 88.0
     },
     'active_material_loss': {
-        'r0': 0.065, 'r1': 0.048, 'c1': 1600.0,
-        'sos': 2400.0, 'attenuation': 0.88, 'phase_shift': 0.0,
+        'r0': 0.060, 'r1': 0.048, 'c1': 1600.0,
+        'sos': 2400.0, 'attenuation': 0.92, 'phase_shift': 0.0,
         'r_th': 2.2, 'c_th': 480.0, 'gas_reverb': False, 'nominal_soh': 82.0
     },
     'electrolyte_decomposition': {
-        'r0': 0.078, 'r1': 0.060, 'c1': 1400.0,
-        'sos': 2380.0, 'attenuation': 0.84, 'phase_shift': 0.2,
+        'r0': 0.088, 'r1': 0.060, 'c1': 1400.0,
+        'sos': 2380.0, 'attenuation': 0.78, 'phase_shift': 0.2,
         'r_th': 2.5, 'c_th': 470.0, 'gas_reverb': False, 'nominal_soh': 80.0
     },
     'gas_generation': {
@@ -284,17 +288,17 @@ def simulate_cell_from_parameters(
                 for i in range(i_min, i_max):
                     ultrasonic_signal[i] += att_mult * attenuation * np.exp(-0.5 * ((i - rev_idx) / rx_sigma) ** 2)
 
-    # 3. Thermal Transient Response (Lumped Parameter Thermal Model)
-    base_temp_rise = (r0 + r1) * (pulse_amp ** 2) * r_th * 30.0 + max(0.0, temp_ambient - 25.0)
+    # 3. Thermal Transient Response (Exact Lumped Parameter Thermal Model: dT/dt = (I^2*R0 - (T - T_amb)/R_th)/C_th)
+    ambient_offset = max(0.0, temp_ambient - 25.0)
     temperature_rise = np.zeros(n_samples)
-    temp_rise = 0.0
+    temp_rise = ambient_offset
     dt_therm = 1e-4
     for i in range(n_samples):
         i_t = current_pulse[i]
-        heat_gen = (i_t ** 2) * (r0 + r1) * 50.0 * dt_therm
-        heat_loss = (temp_rise / max(0.1, r_th)) * dt_therm
-        temp_rise += (heat_gen - heat_loss) / max(0.1, c_th * 1e-2)
-        temperature_rise[i] = base_temp_rise + temp_rise
+        heat_gen = (i_t ** 2) * r0 * dt_therm
+        heat_loss = ((temp_rise - ambient_offset) / max(0.1, r_th)) * dt_therm
+        temp_rise += (heat_gen - heat_loss) / max(1.0, c_th)
+        temperature_rise[i] = temp_rise
     dT_dt = np.gradient(temperature_rise, dt_therm) if n_samples > 1 else np.zeros(n_samples)
 
     # 4. Add Sensor Noise if specified

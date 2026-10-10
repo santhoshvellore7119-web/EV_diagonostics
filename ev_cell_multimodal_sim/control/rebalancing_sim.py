@@ -4,8 +4,12 @@ Updated to log confidence and simulate partial-failure scenarios.
 """
 
 import numpy as np
-from config import params as P
-from control.decision_engine import RecoveryAction
+try:
+    from ev_cell_multimodal_sim.config import params as P
+    from ev_cell_multimodal_sim.control.decision_engine import RecoveryAction
+except ImportError:
+    from config import params as P
+    from control.decision_engine import RecoveryAction
 
 
 class PIDController:

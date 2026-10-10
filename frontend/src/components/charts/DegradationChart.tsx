@@ -10,39 +10,52 @@ interface DegradationChartProps {
 
 const DegradationChart: React.FC<DegradationChartProps> = ({ width = 300, height = 150 }) => {
   const frame = useSelector((state: RootState) => state.diagnosticFrame.frame);
-  const { frameBufferLength } = useSelector((state: RootState) => state.timeline);
+  const history = useSelector((state: RootState) => state.diagnosticFrame.history);
 
-  const historicalData = [];
+  const currentMode = frame?.degradation_mode || 'healthy';
+  const isHealthy = currentMode === 'healthy';
+  const confidence = frame?.degradation_probability !== undefined ? frame.degradation_probability : 0.95;
+  const degradationRisk = isHealthy ? Math.max(0, 1.0 - confidence) : confidence;
 
-  if (frame && frameBufferLength > 0) {
-    const baseProb = frame.degradation_probability || 0.1;
-    for (let i = 0; i < Math.min(frameBufferLength, 50); i++) {
-      // Simulate degradation probability changing over time
-      const variation = (Math.sin(i * 0.1) * 0.1) + (Math.cos(i * 0.05) * 0.05);
-      const probability = Math.max(0, Math.min(1, baseProb + variation));
-      historicalData.push({ x: i, y: probability });
-    }
+  // Map historical data from Redux ring buffer
+  const historicalData = history.map((f, idx) => {
+    const fMode = f.degradation_mode || 'healthy';
+    const fConf = f.degradation_probability !== undefined ? f.degradation_probability : 0.95;
+    const fRisk = fMode === 'healthy' ? Math.max(0, 1.0 - fConf) : fConf;
+    return {
+      x: idx,
+      y: fRisk
+    };
+  });
+
+  if (historicalData.length === 0) {
+    historicalData.push({ x: 0, y: degradationRisk });
   }
 
   return (
     <div className="chart-container">
-      <div className="chart-title">Degradation Probability</div>
+      <div className="chart-title">AI Fault Risk & Mode Confidence</div>
       <LineChart
         data={historicalData}
         width={width}
         height={height}
-        xLabel="Time (samples)"
-        yLabel="Probability"
-        strokeColor="#8b5cf6"
+        xLabel="Buffer Frame"
+        yLabel="Fault Risk"
+        strokeColor={isHealthy ? '#10b981' : '#f59e0b'}
         showPoints={false}
       />
       {frame && (
-        <div className="chart-current-value">
-          Current Probability: {(frame.degradation_probability * 100).toFixed(1)}%
+        <div className="chart-current-value" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>
+            <strong>Fault Risk:</strong> {(degradationRisk * 100).toFixed(1)}%
+          </span>
+          <span style={{ color: isHealthy ? '#34d399' : '#fbbf24', fontSize: '0.78rem', fontWeight: 600 }}>
+            ({(confidence * 100).toFixed(1)}% {currentMode.replace(/_/g, ' ').toUpperCase()})
+          </span>
         </div>
       )}
-      <div className="chart-mode">
-        Mode: {frame?.degradation_mode?.replace(/_/g, ' ').toUpperCase()}
+      <div className="chart-mode" style={{ marginTop: '2px', fontSize: '0.75rem', color: isHealthy ? '#10b981' : '#f59e0b' }}>
+        ● Diagnostic Status: {isHealthy ? 'NORMAL / HEALTHY' : `DEGRADATION (${currentMode.replace(/_/g, ' ').toUpperCase()})`}
       </div>
     </div>
   );
