@@ -125,16 +125,80 @@ class MLProcessor:
         # Extract measurable ultrasonic parameters
         tof_us = float(raw_frame.get('ultrasonic_timeOfFlight', 8.0))
         sos = float(raw_frame.get('ultrasonic_speedOfSound', 2500.0))
-        if tof_us > 0.01 and (sos < 500.0 or sos > 4000.0):
-            # Compute speed of sound from round-trip ToF: d = 2 * 0.01 m
-            sos = (2.0 * 0.01) / (tof_us * 1e-6)
+        # If we have a valid ToF, compute sos from it; otherwise, use the provided sos (if in range)
+        if tof_us > 0.01:
+            sos = (2.0 * 0.01) / (tof_us * 1e-6)  # round-trip distance 0.02 m
+        # Clamp sos to a reasonable range for the simulation
+        if sos < 500.0:
+            sos = 500.0
+        if sos > 4000.0:
+            sos = 4000.0
         attenuation = float(np.clip(raw_frame.get('ultrasonic_amplitude', 1.0), 0.1, 1.2))
         phase_shift = float(raw_frame.get('ultrasonic_phaseShift', 0.0))
 
         # Extract measurable thermal parameters
         temp = float(raw_frame.get('thermal_temperature', 25.0))
-        r_th = float(2.0 + max(0.0, temp - 25.0) * 0.05)
-        c_th = 500.0
+        # Estimate r_th and c_th from thermal dynamics
+        dT_dt = float(raw_frame.get('thermal_tempGradient', 0.15))
+        # We know i_pulse from excitation current
+        i_pulse = abs(i_meas)  # Use absolute value of current
+        # We need to estimate ambient_temp - but we don't know the degradation mode (zero leakage)
+        # However, we can observe that internal_short has higher ambient_temp (35.0 vs 25.0)
+        # Let's estimate ambient_temp from the temperature reading if it's unusually high
+        # For now, assume ambient_temp = 25.0 (conservative)
+        ambient_temp_est = 25.0
+
+        # Step 1: Assume nominal c_th to estimate A from dT_dt
+        c_th_nominal = 500.0
+        # The original code had: A_est = dT_dt * c_th_nominal * 1e-2 / 50.0
+        A_est = dT_dt * c_th_nominal * 1e-2 / 50.0  # (r0 + r1) * i_pulse^2
+
+        # Step 2: Use temperature to estimate r_th
+        if A_est > 0:
+            r_th_est = (temp - ambient_temp_est) / (A_est * 30.0)
+        else:
+            r_th_est = 2.0  # fallback
+
+        # Step 3: Now we can estimate r1 from A and r0
+        # We need r0 from electrical resistance
+        if i_pulse > 0:
+            r1_est = (A_est / (i_pulse * i_pulse)) - r0
+            # Ensure r1_est is reasonable
+            if r1_est < 0.001:
+                r1_est = 0.001
+            if r1_est > 0.5:
+                r1_est = 0.5
+        else:
+            r1_est = r0 * 0.6  # fallback to original method
+
+        # Step 4: Refine c_th estimate using the dT_dt equation with our r1 estimate
+        # Now we have better estimate of (r0 + r1)
+        r0_plus_r1_est = r0 + r1_est
+        if r0_plus_r1_est > 0 and i_pulse > 0:
+            A_refined = r0_plus_r1_est * (i_pulse * i_pulse)
+            if A_refined > 0 and dT_dt != 0:
+                c_th_est = A_refined * 5000.0 / dT_dt  # Solve for c_th from dT_dt = A * 5000 / c_th
+                # Clamp to reasonable values
+                if c_th_est < 100.0:
+                    c_th_est = 100.0
+                if c_th_est > 1000.0:
+                    c_th_est = 1000.0
+            else:
+                c_th_est = 500.0
+        else:
+            c_th_est = 500.0
+
+        # Ensure r_th_est is reasonable
+        if r_th_est < 0.5:
+            r_th_est = 0.5
+        if r_th_est > 10.0:
+            r_th_est = 10.0
+
+        # Now we have our estimates: use them for simulation
+        r1 = r1_est
+        c1 = 1800.0
+        r_th = r_th_est
+        c_th = c_th_est
         gas_reverb = bool(attenuation < 0.70 or (temp > 35.0 and attenuation < 0.85))
 
         sampling_rate_hz = 200000.0
