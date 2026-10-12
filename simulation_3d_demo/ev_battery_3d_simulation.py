@@ -130,19 +130,11 @@ class EVBattery3DSimulator:
 
 
     def create_controls(self):
-        """Create interactive controls for the simulation"""
-        # Adjust subplot to make room for controls
+        """Create interactive controls for the simulation (non-overlapping layout)"""
         plt.subplots_adjust(left=0.25, bottom=0.25)
 
-        # State of Charge slider
-        ax_soc = plt.axes([0.25, 0.15, 0.4, 0.03])
-        self.soc_slider = widgets.Slider(
-            ax_soc, 'State of Charge', 0.0, 1.0, valinit=self.soc, valstep=0.01
-        )
-        self.soc_slider.on_changed(self.update_soc)
-
-        # Degradation mode dropdown
-        ax_deg = plt.axes([0.25, 0.10, 0.3, 0.03])
+        # Degradation mode radio selector on bottom-left panel (sufficient vertical height for 6 items)
+        ax_deg = plt.axes([0.02, 0.02, 0.21, 0.19])
         self.deg_dropdown = widgets.RadioButtons(
             ax_deg,
             ['healthy', 'li_plating', 'active_material_loss',
@@ -151,15 +143,20 @@ class EVBattery3DSimulator:
         )
         self.deg_dropdown.on_clicked(self.update_degradation_mode)
 
-        # Noise level slider
-        ax_noise = plt.axes([0.25, 0.05, 0.4, 0.03])
+        # Sliders cleanly positioned to the right of the radio box
+        ax_soc = plt.axes([0.34, 0.14, 0.38, 0.03])
+        self.soc_slider = widgets.Slider(
+            ax_soc, 'State of Charge', 0.0, 1.0, valinit=self.soc, valstep=0.01
+        )
+        self.soc_slider.on_changed(self.update_soc)
+
+        ax_noise = plt.axes([0.34, 0.08, 0.38, 0.03])
         self.noise_slider = widgets.Slider(
             ax_noise, 'Noise Level', 0.0, 1.0, valinit=self.noise_level, valstep=0.01
         )
         self.noise_slider.on_changed(self.update_noise)
 
-        # Excitation amplitude slider
-        ax_exc = plt.axes([0.25, 0.00, 0.4, 0.03])
+        ax_exc = plt.axes([0.34, 0.02, 0.38, 0.03])
         self.exc_slider = widgets.Slider(
             ax_exc, 'Excitation (A)', 0.1, 1.0, valinit=self.excitation_amplitude, valstep=0.01
         )
@@ -299,9 +296,9 @@ class EVBattery3DSimulator:
         r_th = float(phys.get('r_th', 2.0) * (1.0 + np.random.normal(0, 0.02 * noise_factor)))
         c_th = float(phys.get('c_th', 500.0) * (1.0 + np.random.normal(0, 0.02 * noise_factor)))
 
-        # Electrical ECM calculations
+        # Electrical ECM calculations (OCV_BASE = 3.0V, OCV_SLOPE = 1.2V)
         i_pulse = float(self.params.get('pulse_amplitude_a', 0.5))
-        ocv = float(3.0 + 0.5 * np.clip(self.soc, 0.0, 1.0))
+        ocv = float(3.0 + 1.2 * np.clip(self.soc, 0.0, 1.0))
         voltage = float(ocv - i_pulse * r0 + np.random.normal(0, 0.002 * noise_factor))
         current = float(i_pulse + np.random.normal(0, 0.005 * noise_factor))
         power = float(voltage * current)
@@ -310,17 +307,22 @@ class EVBattery3DSimulator:
         tof_s = float(2.0 * 0.01 / max(100.0, sos) + np.random.normal(0, 0.05e-6 * noise_factor))
         tof_us = float(tof_s * 1e6)
 
-        # Thermal calculations
-        ambient_temp = 25.0 + (10.0 if self.degradation_mode == 'internal_short' else 0.0)
-        temp_rise = float((r0 + r1) * (i_pulse ** 2) * r_th * 30.0 + max(0.0, ambient_temp - 25.0) + np.random.normal(0, 0.05 * noise_factor))
+        # Thermal calculations driven by internal electro-thermal impedance & short dissipation
+        i_eff = 3.6 * (i_pulse / 0.5)
+        q_joule_steady = (i_eff ** 2) * (r0 + 0.65 * r1)
+        q_short = 6.2 if self.degradation_mode == 'internal_short' else 0.0
+        temp_rise = float((q_joule_steady + q_short) * r_th + np.random.normal(0, 0.05 * noise_factor))
         temperature = float(25.0 + temp_rise)
         dT_dt = float((i_pulse ** 2) * (r0 + r1) * 50.0 / (c_th * 1e-2) + np.random.normal(0, 0.01 * noise_factor))
 
         return {
             'electrical': {
                 'voltage': voltage,
+                'voltage_v': voltage,
                 'current': current,
+                'current_a': current,
                 'power': power,
+                'power_w': power,
                 'resistance': r0,
                 'r0': r0,
                 'r1': r1,
@@ -329,6 +331,7 @@ class EVBattery3DSimulator:
             'ultrasonic': {
                 'tof': tof_s,
                 'tof_us': tof_us,
+                'time_of_flight_us': tof_us,
                 'amplitude': attenuation,
                 'phase_shift': phase_shift,
                 'speed_of_sound': sos
@@ -336,6 +339,7 @@ class EVBattery3DSimulator:
             'thermal': {
                 'temperature_rise': temp_rise,
                 'temperature': temperature,
+                'temperature_c': temperature,
                 'dT_dt': dT_dt
             }
         }
@@ -343,54 +347,61 @@ class EVBattery3DSimulator:
     def compute_3d_thermal_field(self, nr=8, ntheta=16, nz=10):
         """
         Compute 3D finite-volume temperature field T(r, theta, z) across the cylindrical cell.
-        Solves anisotropic steady-state/quasi-transient heat conduction:
+        Solves anisotropic steady-state/quasi-transient heat conduction across all 6 degradation regimes:
         k_r * (d2T/dr2 + 1/r*dT/dr) + k_z * d2T/dz2 + q''' = rho * Cp * dT/dt
         """
         radius = float(self.params['cell_width']) / 2.0
         height = float(self.params['cell_height'])
         k_r = float(self.params.get('k_radial', 0.55))
-        k_z = float(self.params.get('k_axial', 28.5))
-        
+
         r_grid = np.linspace(0.001, radius, nr)
         theta_grid = np.linspace(0, 2 * np.pi, ntheta)
         z_grid = np.linspace(-height / 2.0, height / 2.0, nz)
 
-        # Baseline ambient temperature
-        ambient = 25.0 + (10.0 if self.degradation_mode == 'internal_short' else 0.0)
+        ambient = 25.0
         phys = DEGRADATION_PHYSICS_PARAMS.get(self.degradation_mode, DEGRADATION_PHYSICS_PARAMS['healthy'])
         i_pulse = float(self.params.get('pulse_amplitude_a', 0.5))
-        
-        # Volumetric Joule heating source term q''' (W/m^3)
+        i_eff = 3.6 * (i_pulse / 0.5)
+
+        # Steady-state surface temperature rise from lumped thermal resistance R_th
+        q_cell = (i_eff ** 2) * (phys['r0'] + 0.65 * phys['r1'])
+        dt_surf = q_cell * float(phys.get('r_th', 2.0))
+
+        # Volumetric Joule heating source term q''' (W/m^3) for radial core-to-surface parabolic profile
         cell_vol = np.pi * (radius ** 2) * height
-        q_joule = (i_pulse ** 2) * (phys['r0'] + phys['r1']) / max(1e-8, cell_vol)
+        q_vol = q_cell / max(1e-8, cell_vol)
 
         T_3d = np.zeros((nr, ntheta, nz))
 
-        # Core temperature rise from 1D analytical radial profile + axial cooling
         for i, r in enumerate(r_grid):
-            for k, z in enumerate(z_grid):
-                # Analytical cylindrical profile T(r) = T_surf + (q''' * R^2 / (4 * k_r)) * (1 - (r/R)^2)
-                t_radial_rise = (q_joule * (radius ** 2) / (4.0 * max(0.1, k_r))) * (1.0 - (r / radius) ** 2)
-                # Axial conduction to tabs at z = +/- height/2
-                z_norm = 1.0 - (2.0 * abs(z) / height) ** 2
-                t_axial_factor = 0.8 + 0.2 * z_norm
-                
-                base_t = ambient + (t_radial_rise * t_axial_factor * 0.05)
-                T_3d[i, :, k] = base_t
+            r_frac = r / radius
+            t_radial_core = (q_vol * (radius ** 2) / (4.0 * max(0.08, k_r))) * (1.0 - r_frac ** 2)
+            for j, th in enumerate(theta_grid):
+                for k, z in enumerate(z_grid):
+                    z_frac = z / (height / 2.0)  # in [-1, 1]
+                    t_axial_factor = 0.85 + 0.15 * (1.0 - z_frac ** 2)
+                    t_val = ambient + dt_surf * t_axial_factor + t_radial_core
 
-        # Localized hotspot injection for internal short
-        if self.degradation_mode == 'internal_short':
-            # Defect location at r=0.4*R, theta=pi/4, z=0
-            defect_r_idx = int(nr * 0.4)
-            defect_th_idx = int(ntheta * 0.125)
-            defect_z_idx = int(nz * 0.5)
-            
-            for i in range(nr):
-                for j in range(ntheta):
-                    for k in range(nz):
-                        dist_sq = ((i - defect_r_idx) / nr) ** 2 + ((j - defect_th_idx) / ntheta) ** 2 + ((k - defect_z_idx) / nz) ** 2
-                        hotspot_delta = 18.5 * np.exp(-dist_sq / 0.04)
-                        T_3d[i, j, k] += hotspot_delta
+                    # Mode-specific 3D spatial thermal physics
+                    if self.degradation_mode == 'li_plating':
+                        # Anode tab concentration & overpotential heating near negative terminal (z < 0)
+                        t_val += 1.4 * np.exp(-((z_frac + 0.65) ** 2) / 0.18) * (0.6 + 0.4 * r_frac)
+                    elif self.degradation_mode == 'active_material_loss':
+                        # Elevated core heating due to higher local current density in remaining active mass
+                        t_val += 1.8 * (1.0 - 0.7 * (r_frac ** 2)) * (1.0 - 0.3 * (z_frac ** 2))
+                    elif self.degradation_mode == 'electrolyte_decomposition':
+                        # Interfacial SEI film heating distributed across jelly-roll layers
+                        t_val += 1.3 * (0.5 + 0.5 * np.cos(2.0 * th) ** 2) * (1.0 - 0.25 * (r_frac ** 2))
+                    elif self.degradation_mode == 'gas_generation':
+                        # Delamination gas pocket acts as radial thermal barrier near mid-plane (z ~ 0)
+                        gas_barrier = np.exp(-(z_frac ** 2) / 0.22) * (0.5 + 0.5 * np.sin(th))
+                        t_val += 2.6 * gas_barrier * (1.0 - 0.4 * r_frac)
+                    elif self.degradation_mode == 'internal_short':
+                        # Intense localized micro-short hotspot at (r=0.4R, theta=pi/4, z=0)
+                        dist_sq = ((i - nr * 0.4) / nr) ** 2 + ((j - ntheta * 0.125) / ntheta) ** 2 + ((k - nz * 0.5) / nz) ** 2
+                        t_val += 8.5 + 18.5 * np.exp(-dist_sq / 0.04)
+
+                    T_3d[i, j, k] = t_val
 
         return {
             'r_grid': r_grid,
@@ -977,7 +988,7 @@ class EVBattery3DSimulator:
             'noise_level': self.noise_level,
             'excitation_amplitude': self.excitation_amplitude,
             'step_count': self._step_count,
-            'timestamp': self._get_timestamp() if hasattr(self, '_last_timestamp') else None
+            'timestamp': self._get_timestamp()
         }
 
     def _get_timestamp(self):

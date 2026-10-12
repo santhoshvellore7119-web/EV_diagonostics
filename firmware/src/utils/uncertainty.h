@@ -7,7 +7,7 @@
 #define UNCERTAINTY_H
 
 #include <Arduino.h>
-#include "daq.h"
+#include "../daq/daq.h"
 
 /**
  * @brief Initialize uncertainty estimation module

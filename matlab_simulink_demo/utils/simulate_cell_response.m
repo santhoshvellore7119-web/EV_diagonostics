@@ -97,11 +97,11 @@ function response = simulate_cell_response(model, soc, degradation_mode, add_noi
     thermal_alpha = exp(-dt / thermal_time_constant);
     thermal_beta = R_th * (1 - thermal_alpha);  % This gives the steady-state gain
 
-    % Calculate power_in for each time step
-    power_in = energy_per_sample * heat_factor;
+    % Calculate power_in (Watts) for each time step
+    power_in = power_dissipated * heat_factor;
 
     for i = 2:length(t)
-        temperature_rise(i) = temperature_rise(i-1) * thermal_alpha + power_in(i-1) * (1 - thermal_alpha);
+        temperature_rise(i) = temperature_rise(i-1) * thermal_alpha + power_in(i-1) * thermal_beta;
     end
 
     % Calculate final dT/dt

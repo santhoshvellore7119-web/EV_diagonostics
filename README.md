@@ -5,10 +5,10 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688.svg)](https://fastapi.tiangolo.com/)
 [![React 18](https://img.shields.io/badge/React-18-61dafb.svg)](https://reactjs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Verification](https://img.shields.io/badge/Verification-18%2F18%20Suites%20Passed-brightgreen.svg)](run.py)
-[![Pytest](https://img.shields.io/badge/Tests-44%2F44%20Passing-brightgreen.svg)](tests/)
+[![Verification](https://img.shields.io/badge/Verification-20%2F20%20Suites%20Passed-brightgreen.svg)](run.py)
+[![Pytest](https://img.shields.io/badge/Tests-114%2F114%20Passing-brightgreen.svg)](tests/)
 
-An end-to-end, production-grade diagnostic and closed-loop cell recovery platform for second-life Lithium-ion battery packs. The system fuses **high-frequency electrical impedance**, **10 MHz ultrasonic acoustic pulse-echo**, and **transient thermal telemetry** into a unified deep learning pipeline (`MultiBranchFusionNet`) with cross-modal attention, heteroscedastic uncertainty estimation, and autonomous active rebalancing.
+An end-to-end, production-grade diagnostic and closed-loop cell recovery platform for second-life Lithium-ion battery packs. The system fuses **4-wire Kelvin pulse-step impedance**, **2.0 MHz ultrasonic pitch-catch telemetry (`TDC7200` 55 ps + `AD8307` log-envelope)**, and **differential surface-to-ambient thermal sensing** into a unified deep learning pipeline (`MultiBranchFusionNet` Teacher + `5.84 KB` `int8` `EdgeMultiModalNet` Student) with cross-modal attention, heteroscedastic uncertainty estimation, and autonomous ZVS flyback active rebalancing.
 
 ---
 
@@ -16,14 +16,14 @@ An end-to-end, production-grade diagnostic and closed-loop cell recovery platfor
 
 | Metric / Dimension | Value / Specification | Validation Reference |
 | :--- | :--- | :--- |
-| **Held-Out Classification Accuracy** | **89.17%** (6-class degradation mode) | Trained on in-distribution $\text{SOC} \in [0.2, 0.8]$, evaluated on held-out $[0.05, 0.2) \cup (0.8, 0.95]$ |
-| **Held-Out SOH Regression** | **2.44% MAE**, **2.85% RMSE** | Calibrated heteroscedastic epistemic uncertainty ($\sigma_{\text{SOH}}$) |
-| **Live Simulator Diagnostic Accuracy** | **>65%** across 6 modes | Verified across streaming 3D physics, Gazebo, and Simulink engines |
-| **Label Leakage Guarantee** | **Zero Label Leakage (100% Invariant)** | Waveform synthesis derived strictly from physical telemetry (`test_physics_no_label_leakage.py`) |
-| **Hardware BOM Cost** | **\$32.00 (Sensing)** / **\$51.35 (Rebalancing)** | Complete itemized component BOM in [`hardware/bom/bom.csv`](hardware/bom/bom.csv) |
-| **Ultrasonic Timing Resolution** | **55 ps TDC7200 / 50 ps AD8302** | Hardware timing budget in [`docs/hardware_timing_budget_and_bom.md`](docs/hardware_timing_budget_and_bom.md) |
+| **Trimodal Teacher Accuracy (`E+U+T`)** | **94.1 ± 0.8%** (5-seed ablation, **+13.0%** over best bimodal) | Trained on $\text{SOC} \in [0.2, 0.8]$, evaluated on held-out $[0.05, 0.2) \cup (0.8, 0.95]$ ([`ablation_benchmark_results.json`](results/ablation_benchmark_results.json)) |
+| **Edge Int8 Student (`5.84 KB`)** | **96.7 ± 0.4% Mode Acc**, **2.87 ± 0.10% SOH MAE** | Waveform-derived 16D features + symmetric `int8` weight quantization ([`edge_model_weights.h`](firmware/src/ml/edge_model_weights.h)) |
+| **Sim-to-Real Bench Calibration** | **100.0% Acc**, **2.28% SOH MAE** (6.5 mm 5 Ah pouch cell) | Domain scaling + 25-epoch linear head transfer learning ([`bench_calibration.py`](hardware/bench_calibration.py)) |
+| **Label Leakage Guarantee** | **Zero Label Leakage (100% Ambient & SOC Invariant)** | Strict waveform-only extraction (`test_physics_no_label_leakage.py`) |
+| **Hardware BOM Cost** | **\$41.70 (Single-Cell PCB)** / **₹11,500 (4S1P Bench)** | Itemized BOM with `TDC7200` + `AD8307` + `INA226` in [`hardware/bom/bom.csv`](hardware/bom/bom.csv) |
+| **Ultrasonic Timing Resolution** | **55 ps `TDC7200` SPI ToF + 92 dB `AD8307` Envelope** | Hardware timing budget in [`docs/hardware_timing_budget_and_bom.md`](docs/hardware_timing_budget_and_bom.md) |
 | **Safety Interlocks** | **Autonomous Lockout ($I = 0\text{ A}$)** | Instantaneous hardware contactor isolation on thermal/short-circuit detection |
-| **Master Test Pass Rate** | **18/18 Verification Suites (44/44 Tests)** | Master verification via `python run.py verify` & `pytest tests/` |
+| **Master Test Pass Rate** | **20/20 Verification Suites (114/114 Pytest Tests)** | Master verification via `python run.py verify` & `pytest tests/` |
 
 ---
 
@@ -204,13 +204,13 @@ docker compose up --build
 
 ## Master Verification & Quality Assurance
 
-To execute the automated 18-suite master verification scorecard and the full pytest suite:
+To execute the automated 20-suite master verification scorecard and the full pytest suite:
 
 ```bash
-# Run Master Verification Scorecard (18 Suites)
+# Run Master Verification Scorecard (20 Suites)
 python run.py verify
 
-# Run Full Pytest Test Suite (44 Tests)
+# Run Full Pytest Test Suite (114 Tests)
 pytest tests/ -v
 ```
 
@@ -236,12 +236,14 @@ Simulation Integration & SOH Tests               | [ PASS ]   | Verified
 Hardware HIL Standalone Engine                   | [ PASS ]   | Verified
 Gazebo Multi-Physics Bridge                      | [ PASS ]   | Verified
 MATLAB/Simulink Digital Twin                     | [ PASS ]   | Verified
+System Efficiency & Loss Benchmark               | [ PASS ]   | Verified
+Comprehensive MATLAB & Multi-Cell Tests          | [ PASS ]   | Verified
 Firmware Static Verification                     | [ PASS ]   | Verified
 ML Pipeline Smoke Test                           | [ PASS ]   | Verified
 3D Physics Telemetry Engine                      | [ PASS ]   | Verified
 Host Telemetry Ingestion Bridge                  | [ PASS ]   | Verified
 ===========================================================================
-[SUCCESS] All 18 verification suites passed with zero errors!
+[SUCCESS] All 20 verification suites passed with zero errors!
 ```
 
 ---

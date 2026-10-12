@@ -6,15 +6,16 @@ Item,Category,Designator,Description,Manufacturer,Part Number,Distributor SKU,Fo
 5,Pulser Driver,U5,TC4420EPA 6A High-Speed Single MOSFET Gate Driver,Microchip Technology,TC4420EPA,DigiKey: TC4420EPA-ND,DIP-8 / SOIC-8,1.25,1,1.25
 6,Electrical AFE,U6,INA226 16-Bit High-Side Current & Power Monitor I2C,Texas Instruments,INA226AIDGSR,DigiKey: 296-30155-1-ND,VSSOP-10,1.55,1,1.55
 7,Thermal Optical,U7,MLX90614ESF-BAA Non-Contact IR Thermometer Sensor,Melexis Technologies,MLX90614ESF-BAA-000-TU,DigiKey: MLX90614ESF-BAA-ND,TO-39,5.80,1,5.80
-8,Thermal Contact,RT1,RT2,NTC Thermistor 10kΩ ±0.5% 25°C Beta 3950 (Surface Contact),TDK Corporation,B57861S0103F040,DigiKey: 495-2144-ND,Radial Bead,0.65,2,1.30
-9,PZT Transducers,X1,X2,1.0 MHz Piezoceramic Disc Transducers (Lead Zirconate Titanate),Steminc / Steiner & Martins,SMD10T2R111WL,Manufacturer Direct,Disc D10mm x 2mm,2.10,2,4.20
-10,Power MOSFETs,Q1,Q2,FDMS86180 N-Ch Shielded Gate PowerTrench 100V 60A 3.2mΩ,ON Semiconductor,FDMS86180,DigiKey: FDMS86180CT-ND,Power56 (5x6mm),1.15,2,2.30
+8,Thermal Contact,"RT1,RT2",NTC Thermistor 10kΩ ±0.5% 25°C Beta 3950 (Surface Contact),TDK Corporation,B57861S0103F040,DigiKey: 495-2144-ND,Radial Bead,0.65,2,1.30
+9,PZT Transducers,"X1,X2",2.0 MHz PZT-5A Piezoceramic Disc Transducers (Through-Transmission),Steminc / Steiner & Martins,SMD10T2R111WL,Manufacturer Direct,Disc D10mm x 1mm,2.10,2,4.20
+10,Power MOSFETs,"Q1,Q2",FDMS86180 N-Ch Shielded Gate PowerTrench 100V 60A 3.2mΩ,ON Semiconductor,FDMS86180,DigiKey: FDMS86180CT-ND,Power56 (5x6mm),1.15,2,2.30
 11,Gate Driver,U8,TPS28225 High-Frequency Synchronous Buck MOSFET Driver,Texas Instruments,TPS28225DRBR,DigiKey: 296-24898-1-ND,SON-8,1.10,1,1.10
 12,Storage Inductor,L1,SER2918H-103KL 10µH 14.5A High-Current Inductor,Coilcraft,SER2918H-103KL,Mouser: 994-SER2918H-103KL,SMD 29x18mm,3.40,1,3.40
 13,Current Shunt,R_SHUNT,10mΩ 0.1% 5W 4-Terminal Kelvin Current Sense Resistor,Bourns,CSS2H-2512R-L010F,DigiKey: CSS2H-2512R-L010FCT-ND,2512 4-Wire,1.15,1,1.15
 14,Safety Relays,K1,G3VM-61A1 Solid State MOSFET Relay Opto-Isolated 60V 500mA,Omron Electronics,G3VM-61A1,DigiKey: Z2698-ND,DIP-4 SMD,1.60,1,1.60
 15,USB-UART Bridge,U9,CP2102N USBXpress USB-to-UART Bridge Controller,Silicon Labs,CP2102N-A02-GQFN24,DigiKey: 336-3983-1-ND,QFN-24,1.40,1,1.40
-16,Passives & Decoupling,PASSIVES,C0G/X7R Ceramic Capacitors + 0.1% Thin Film Resistors,Yageo / Murata,Generic Kit,DigiKey: Multiple,0603 / 0805 SMD,2.50,1,2.50
-17,Custom PCB,PCB,4-Layer High-Frequency FR4 PCB (ENIG Gold Finish 1.6mm),JLCPCB / PCBWay,Custom Fab,JLC-4L-100x100,100x100mm,2.80,1,2.80
-18,Mechanical Fixture,MECH,3D Printed Transducer Clamp + Acoustic Silicone Elastomer Pad,Custom In-House,MECH-FIX-18650,PETG / Dow Sylgard 184,Custom,0.85,1,0.85
-,,,,,,TOTAL PRODUCTION BOM COST,,,,38.75
+16,Ultrasonic Env Detector,U10,AD8307ARZ 92dB Logarithmic Amplifier Envelope Detector (DC-500MHz),Analog Devices,AD8307ARZ,DigiKey: AD8307ARZ-ND,SOIC-8,2.95,1,2.95
+17,Passives & Decoupling,PASSIVES,C0G/X7R Ceramic Capacitors + 0.1% Thin Film + 1Ω 25W Kelvin Pulse Load,Yageo / Murata,Generic Kit,DigiKey: Multiple,0603 / 0805 SMD,2.50,1,2.50
+18,Custom PCB,PCB,4-Layer High-Frequency FR4 PCB (ENIG Gold Finish 1.6mm),JLCPCB / PCBWay,Custom Fab,JLC-4L-100x100,100x100mm,2.80,1,2.80
+19,Mechanical Fixture,MECH,3D Printed 5N Spring C-Clamp + Acoustic Silicone Elastomer Pad,Custom In-House,MECH-FIX-POUCH,PETG / Dow Sylgard 184,Custom,0.85,1,0.85
+20,,,,,,,TOTAL PRODUCTION BOM COST,,,,41.70

@@ -49,22 +49,47 @@ class SerialReader(threading.Thread):
                     bytes_read += len(data)
                     buffer += data
 
-                    # Look for complete JSON objects (simplistic)
-                    while buffer.startswith('{') and '}' in buffer:
-                        end = buffer.index('}') + 1
-                        json_str = buffer[:end]
-                        buffer = buffer[end:]
+                    # Extract complete balanced JSON objects (supporting nested braces)
+                    while '{' in buffer:
+                        start_idx = buffer.index('{')
+                        if start_idx > 0:
+                            buffer = buffer[start_idx:]
+                        depth = 0
+                        in_string = False
+                        escape = False
+                        end_idx = -1
+                        for idx, ch in enumerate(buffer):
+                            if escape:
+                                escape = False
+                                continue
+                            if ch == '\\' and in_string:
+                                escape = True
+                                continue
+                            if ch == '"':
+                                in_string = not in_string
+                                continue
+                            if not in_string:
+                                if ch == '{':
+                                    depth += 1
+                                elif ch == '}':
+                                    depth -= 1
+                                    if depth == 0:
+                                        end_idx = idx + 1
+                                        break
+                        if end_idx == -1:
+                            # Wait for more serial bytes to complete the JSON object
+                            break
+                        json_str = buffer[:end_idx]
+                        buffer = buffer[end_idx:].lstrip()
                         try:
                             packet = json.loads(json_str)
                             packets_processed += 1
                             if self.callback:
                                 self.callback(packet)
-                            # Log every 100 packets to avoid spam
                             if packets_processed % 100 == 0:
                                 self.logger.debug(f"Processed {packets_processed} packets, {bytes_read} bytes read")
                         except json.JSONDecodeError as e:
                             self.logger.debug(f"Invalid JSON received: {json_str[:50]}... Error: {e}")
-                            pass  # Invalid JSON, ignore
                 else:
                     time.sleep(0.001)  # Small delay to prevent CPU hogging
             except Exception as e:
@@ -80,6 +105,15 @@ class SerialReader(threading.Thread):
         """Stop the serial reader thread."""
         self.logger.info("Stopping serial reader...")
         self.running = False
+
+    def isRunning(self) -> bool:
+        """Compatibility alias for Qt-style thread check."""
+        return self.is_alive()
+
+    def wait(self, timeout: float = 2.0):
+        """Compatibility alias for Qt-style thread join."""
+        if self.is_alive():
+            self.join(timeout=timeout)
 
     def is_connected(self):
         """Check if serial connection is active."""

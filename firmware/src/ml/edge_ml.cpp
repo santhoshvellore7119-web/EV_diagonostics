@@ -61,10 +61,18 @@ void edge_ml_extract_features(const DAQPacket *packet, float *features_out) {
     float p_calc = (fabsf(p_meas) > 1e-4f) ? p_meas : (v_bus * i_meas);
     float p_norm = p_calc / 4.0f;
 
-    // 3. Dynamic resistance R0
+    // 3. Dynamic resistance R0 (with OCV voltage-sag fallback when shunt voltage is not separate)
     float r0 = 0.045f;
     if (fabsf(i_meas) > 1e-3f) {
-        r0 = fabsf(v_shunt) / fabsf(i_meas);
+        if (fabsf(v_shunt) > 1e-5f) {
+            r0 = fabsf(v_shunt) / fabsf(i_meas);
+        } else {
+            float ocv_nominal = 3.65f + 0.55f * 0.5f;
+            float v_drop = ocv_nominal - v_bus;
+            if (v_drop > 0.002f) {
+                r0 = v_drop / fabsf(i_meas);
+            }
+        }
     }
     if (r0 < 0.010f) r0 = 0.010f;
     if (r0 > 0.350f) r0 = 0.350f;

@@ -87,7 +87,7 @@ def create_signal_plots(electrical, ultrasonic, thermal, time_s, confidences=Non
 
     return fig
 
-def create_confidence_bars(confidences):
+def create_confidence_bars(confidences=None):
     """Create a horizontal bar chart showing modality confidences."""
     if confidences is None:
         # Default values if no confidences provided
@@ -216,12 +216,6 @@ def main():
     if st.sidebar.button("🔄 Run Diagnostic Cycle", type="primary"):
         # Simulate cell response
         with st.spinner("Simulating cell response..."):
-            # Update params with noise level
-            params = P.copy()
-            params['ELECTRICAL_NOISE_STD_V'] = 0.001 * (1 + noise_level)
-            params['ULTRASONIC_TOF_NOISE_STD_S'] = 1e-9 * (1 + noise_level)
-            params['THERMAL_NOISE_STD_K'] = 0.01 * (1 + noise_level)
-
             # Simulate cell response
             results = simulate_cell_response(soc, degradation_mode, add_noise=True)
 

@@ -1,0 +1,22 @@
+{
+  "calibration_profile": {
+    "cell_model": "LiPo_6060100_5Ah_Pouch",
+    "cell_thickness_m": 0.0065,
+    "r0_healthy_ohm": 0.028152807822815325,
+    "tof_healthy_us": 5.212435284815887,
+    "amplitude_healthy": 0.9219487517283622,
+    "ambient_temp_c": 28.5
+  },
+  "scaling_factors": {
+    "r0_scale": 1.4919,
+    "tof_scale": 1.5348,
+    "amp_scale": 1.0304
+  },
+  "transfer_metrics": {
+    "pre_calibration_accuracy_pct": 66.67,
+    "post_calibration_accuracy_pct": 100.0,
+    "pre_calibration_soh_mae_pct": 18.89,
+    "post_calibration_soh_mae_pct": 2.28,
+    "num_bench_samples": 48
+  }
+}

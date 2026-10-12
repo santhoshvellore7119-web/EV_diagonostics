@@ -4,11 +4,11 @@
 This document describes the recommended methods for mounting ultrasonic transducer pairs to battery cells for reliable time-of-flight (ToF) measurements. Proper mounting is critical for signal coupling efficiency, measurement repeatability, and long-term stability.
 
 ## Transducer Specifications
-- **Type**: Piezoelectric disc transducers
-- **Frequency**: 40 kHz center frequency
-- **Diameter**: Typically 10-20mm (application dependent)
-- **Radiation Surface**: Active piezoelectric area (typically 80-90% of physical diameter)
-- **Recommended Pair**: Matched transmitter/receiver with similar characteristics
+- **Type**: PZT-5A (Lead Zirconate Titanate) thickness-mode contact piezoceramic disc transducers (`Steminc SMD10T2R111WL`)
+- **Frequency**: **1.0 MHz – 2.0 MHz** center frequency ($\lambda = c/f \approx 1.25\text{ mm}$ at $2.0\text{ MHz}$ in liquid electrolyte, providing sub-millimeter Time-of-Flight sensitivity without multi-layer jelly-roll Mie scattering)
+- **Diameter**: $10\text{ mm}$ diameter $\times$ $1.0\text{ mm}$ thickness
+- **Radiation Surface**: Active silver-electrode piezoceramic face ($> 90\%$ of physical diameter)
+- **Recommended Configuration**: Pitch-catch through-transmission pair mounted on opposing flat faces of a 5 Ah – 10 Ah LiPo/NMC pouch cell under a constant $5.0\text{ N}$ spring-loaded C-clamp
 
 ## Mounting Methods
 

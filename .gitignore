@@ -4,6 +4,8 @@ __pycache__/
 *$py.class
 # MATLAB
 *.mat
+!ml_pipeline/models/*.mat
+!matlab_simulink_demo/models/*.mat
 *.obj
 *~
 # Windows

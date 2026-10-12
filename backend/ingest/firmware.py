@@ -148,25 +148,37 @@ class FirmwareIngestor:
 
         return self.last_hardware_packet
 
+    async def set_parameters(self, **kwargs):
+        """Accept parameter updates in live mode without raising errors."""
+        pass
+
     def _convert_to_diagnostic_frame(self, raw: Dict[str, Any]) -> Dict[str, Any]:
-        """Convert real hardware raw sensor readings to DiagnosticFrame."""
+        """Convert real hardware raw sensor readings (nested or flat JSON) to DiagnosticFrame."""
         self.frame_id_counter += 1
-        
-        # Real electrical ADC readings
-        v = float(raw.get('voltage_v', raw.get('v', raw.get('bus_voltage_v', 0.0))))
-        i = float(raw.get('current_a', raw.get('i', 0.0)))
-        r0 = float(raw.get('r0_ohm', raw.get('resistance', 0.045)))
-        
+
+        elec = raw.get('electrical', {}) if isinstance(raw.get('electrical'), dict) else {}
+        ultra = raw.get('ultrasonic', {}) if isinstance(raw.get('ultrasonic'), dict) else {}
+        therm = raw.get('thermal', {}) if isinstance(raw.get('thermal'), dict) else {}
+        edge_ml = raw.get('edge_ml', {}) if isinstance(raw.get('edge_ml'), dict) else {}
+
+        # Real electrical ADC readings (supporting both serializer.cpp nested and flat keys)
+        v = float(elec.get('bus_voltage_v', elec.get('voltage_v', raw.get('voltage_v', raw.get('v', raw.get('bus_voltage_v', 0.0))))))
+        i = float(elec.get('current_a', raw.get('current_a', raw.get('i', 0.0))))
+        r0 = float(elec.get('internal_resistance_ohm', elec.get('r0_ohm', raw.get('r0_ohm', raw.get('resistance', 0.045)))))
+
         # Real TDC7200 / Ultrasonic acoustic sensor readings
-        tof = float(raw.get('tof_us', raw.get('time_of_flight_us', 8.0)))
-        amp = float(raw.get('amplitude', raw.get('amp', 1.0)))
-        sos = float(raw.get('speed_of_sound', raw.get('sos', 2500.0)))
-        phase = float(raw.get('phase_shift', 0.0))
+        tof = float(ultra.get('time_of_flight_us', ultra.get('tof_us', raw.get('tof_us', raw.get('time_of_flight_us', 8.0)))))
+        amp = float(ultra.get('amplitude_v', ultra.get('amplitude', raw.get('amplitude', raw.get('amp', 1.0)))))
+        sos = float(ultra.get('speed_of_sound_m_s', ultra.get('speed_of_sound', raw.get('speed_of_sound', raw.get('sos', (2.0 * 0.01) / (tof * 1e-6) if tof > 0 else 2500.0)))))
+        phase = float(ultra.get('phase_shift_rad', ultra.get('phase_shift', raw.get('phase_shift', 0.0))))
 
         # Real thermal RTD / Peltier temperature readings
-        temp = float(raw.get('temperature_c', raw.get('temp', 25.0)))
-        dT_dt = float(raw.get('temp_gradient', raw.get('dT_dt', 0.0)))
-        heat_flux = float(raw.get('heat_flux', 10.0))
+        temp = float(therm.get('temperature_c', raw.get('temperature_c', raw.get('temp', 25.0))))
+        dT_dt = float(therm.get('temp_gradient_c_s', therm.get('temp_gradient', raw.get('temp_gradient', raw.get('dT_dt', 0.0)))))
+        heat_flux = float(therm.get('heat_flux_w_m2', therm.get('heat_flux', raw.get('heat_flux', 10.0))))
+
+        soh_val = float(edge_ml.get('soh_pct', raw.get('soh', 0.0)))
+        deg_mode = str(edge_ml.get('degradation_mode', raw.get('degradation_mode', 'healthy')))
 
         frame = {
             "timestamp": time.time(),
@@ -179,37 +191,37 @@ class FirmwareIngestor:
             # Electrical data
             "electrical_voltage": v,
             "electrical_current": i,
-            "electrical_power": v * i,
+            "electrical_power": float(elec.get('power_w', v * i)),
             "electrical_resistance": r0,
-            "electrical_uncertainty": float(raw.get('voltage_unc', 0.005)),
+            "electrical_uncertainty": float(elec.get('voltage_uncertainty_v', raw.get('voltage_unc', 0.005))),
 
             # Ultrasonic data
             "ultrasonic_timeOfFlight": tof,
             "ultrasonic_amplitude": amp,
             "ultrasonic_phaseShift": phase,
             "ultrasonic_speedOfSound": sos,
-            "ultrasonic_uncertainty": float(raw.get('tof_unc', 0.05)),
+            "ultrasonic_uncertainty": float(ultra.get('tof_uncertainty_us', raw.get('tof_unc', 0.05))),
 
             # Thermal data
             "thermal_temperature": temp,
             "thermal_tempGradient": dT_dt,
             "thermal_heatFlux": heat_flux,
-            "thermal_uncertainty": float(raw.get('temp_unc', 0.2)),
+            "thermal_uncertainty": float(therm.get('temp_uncertainty_c', raw.get('temp_unc', 0.2))),
 
             # ML and Rebalancing will process this live frame in main pipeline
-            "stateOfHealth_value": float(raw.get('soh', 0.0)),
-            "stateOfHealth_confidenceInterval_lower": 0.0,
-            "stateOfHealth_confidenceInterval_upper": 0.0,
+            "stateOfHealth_value": soh_val,
+            "stateOfHealth_confidenceInterval_lower": max(0.0, soh_val - 2.5) if soh_val > 0 else 0.0,
+            "stateOfHealth_confidenceInterval_upper": min(100.0, soh_val + 2.5) if soh_val > 0 else 0.0,
             "stateOfHealth_method": "live_hardware",
 
-            "degradation_mode": "healthy",
-            "degradation_probability": 0.95,
-            "degradation_perClass_healthy": 0.95,
-            "degradation_perClass_li_plating": 0.01,
-            "degradation_perClass_active_material_loss": 0.01,
-            "degradation_perClass_electrolyte_decomposition": 0.01,
-            "degradation_perClass_gas_generation": 0.01,
-            "degradation_perClass_internal_short": 0.01,
+            "degradation_mode": deg_mode,
+            "degradation_probability": float(edge_ml.get('confidence', 0.95)),
+            "degradation_perClass_healthy": 0.95 if deg_mode == 'healthy' else 0.01,
+            "degradation_perClass_li_plating": 0.95 if deg_mode == 'li_plating' else 0.01,
+            "degradation_perClass_active_material_loss": 0.95 if deg_mode == 'active_material_loss' else 0.01,
+            "degradation_perClass_electrolyte_decomposition": 0.95 if deg_mode == 'electrolyte_decomposition' else 0.01,
+            "degradation_perClass_gas_generation": 0.95 if deg_mode == 'gas_generation' else 0.01,
+            "degradation_perClass_internal_short": 0.95 if deg_mode == 'internal_short' else 0.01,
             "degradation_entropy": 0.05,
 
             "rebalancing_state": "monitoring",

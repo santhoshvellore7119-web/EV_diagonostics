@@ -81,8 +81,8 @@ def main():
     # Files to check
     files_to_check = [
         'ev_battery_3d_simulation.py',
-        'test_simulation.py',
-        'test_basic_functionality.py'
+        'test_3d_simulation.py',
+        'run_3d_sim.py'
     ]
     
     all_passed = True

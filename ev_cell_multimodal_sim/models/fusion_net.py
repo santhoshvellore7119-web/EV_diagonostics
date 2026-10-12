@@ -84,26 +84,22 @@ class MultiBranchFusionNet(nn.Module):
         # Regression head for SOH log variance (for confidence interval)
         self.soh_log_var_head = nn.Linear(128, 1)
 
+    @property
+    def soh_logvar_head(self):
+        return self.soh_log_var_head
+
     def forward(self, electrical, ultrasonic, thermal):
         """
         Forward pass with uncertainty-aware fusion.
-        Args:
-            electrical: Tensor of shape (B, 1, L)
-            ultrasonic: Tensor of shape (B, 1, L)
-            thermal: Tensor of shape (B, 1, L)
-        Returns:
-            dict with keys:
-                'degradation_logits': (B, num_classes)
-                'soh': (B, 1) - predicted SOH mean
-                'soh_mean': (B, 1) - predicted SOH mean
-                'soh_var': (B, 1) - predicted SOH variance
-                'modality_precisions': dict with precision for each modality
-                'features': (B, 128) - fused features
         """
         # Extract features and precision from each branch
         feat_e, prec_e = self.electrical_branch(electrical)  # (B, 128), (B, 128)
         feat_u, prec_u = self.ultrasonic_branch(ultrasonic)  # (B, 128), (B, 128)
         feat_t, prec_t = self.thermal_branch(thermal)        # (B, 128), (B, 128)
+
+        stacked_precisions = torch.stack([prec_e, prec_u, prec_t], dim=1)
+        modality_confidence = torch.mean(stacked_precisions, dim=2)  # (B, 3)
+        modality_weights_2d = F.softmax(modality_confidence, dim=1)  # (B, 3)
 
         if self.fusion_type == 'concat':
             fused = torch.cat([feat_e, feat_u, feat_t], dim=1)
@@ -111,13 +107,8 @@ class MultiBranchFusionNet(nn.Module):
             fused = feat_e + feat_u + feat_t
         else:
             # Confidence-weighted attention fusion
-            # Stack features and precisions
             stacked_features = torch.stack([feat_e, feat_u, feat_t], dim=1)
-            stacked_precisions = torch.stack([prec_e, prec_u, prec_t], dim=1)
-
-            # Compute attention weights based on precision
-            modality_confidence = torch.mean(stacked_precisions, dim=2)  # (B, 3)
-            modality_weights = F.softmax(modality_confidence, dim=1).unsqueeze(2)  # (B, 3, 1)
+            modality_weights = modality_weights_2d.unsqueeze(2)  # (B, 3, 1)
             fused = torch.sum(stacked_features * modality_weights, dim=1)  # (B, 128)
 
         # Post-fusion processing
@@ -126,14 +117,16 @@ class MultiBranchFusionNet(nn.Module):
         # Outputs
         degradation_logits = self.classification_head(features)  # (B, num_classes)
         soh_mean = self.soh_mean_head(features)                 # (B, 1)
-        soh_log_var = self.soh_log_var_head(features)           # (B, 1)
+        soh_log_var = torch.clamp(self.soh_log_var_head(features), min=-6.0, max=3.0)
         soh_var = torch.exp(soh_log_var)                        # Ensure positive variance
 
         return {
             'degradation_logits': degradation_logits,
             'soh': soh_mean,
             'soh_mean': soh_mean,
+            'soh_logvar': soh_log_var,
             'soh_var': soh_var,
+            'modality_weights': modality_weights_2d,
             'modality_precisions': {
                 'electrical': prec_e,
                 'ultrasonic': prec_u,

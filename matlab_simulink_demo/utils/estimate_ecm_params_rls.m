@@ -315,17 +315,14 @@ function [param_est, param_unc] = estimate_ecm_params_rls(y, u, P_prev, lambda, 
     % Ensure we have the right dimensions
     assert(numel(phi) == theta_dim, 'Regression vector dimension mismatch');
 
-    % Standard RLS update
-    lambda = 0.99;  % Forgetting factor
-
-    % Gain calculation
+    % Gain calculation (L is 3x1 column vector)
     L = (P * phi) / (lambda + phi' * P * phi);
 
-    % Parameter update
-    theta_est = theta_est + L' * (y - phi * theta_est);
+    % Parameter update (phi' * theta_est is scalar prediction, L * residual is 3x1)
+    theta_est = theta_est + L * (y - (phi' * theta_est));
 
     % Covariance update
-    P = (P - L * phi' * P) / lambda;
+    P = (P - L * (phi' * P)) / lambda;
 
     % Ensure symmetric and positive definite
     P = (P + P') / 2;

@@ -80,6 +80,23 @@ class EvidenceGenerator:
             print(f"Evidence recording stopped. "
                   f"Total frames recorded: {self.session_metadata['total_frames']}")
 
+    def clear(self):
+        """Clear all recorded evidence buffers and reset session state."""
+        self.is_recording = False
+        self.frame_buffer.clear()
+        self.rebalancing_cycles.clear()
+        self.ablation_studies.clear()
+        self.current_cycle = None
+        self.baseline_data = None
+        self.session_metadata = {
+            'start_time': None,
+            'end_time': None,
+            'total_frames': 0,
+            'cell_id': None,
+            'pack_id': None,
+            'source_modes': set(),
+        }
+
     def record_frame(self, frame: Dict[str, Any]):
         """
         Record a single DiagnosticFrame for evidence generation.
@@ -201,6 +218,13 @@ class EvidenceGenerator:
         self.ablation_studies.append(study)
         print(f"Ablation study recorded for modality: {modality_disabled}")
 
+    def get_evidence_summary(self) -> Dict[str, Any]:
+        """Return structured evidence summary including recording status and session statistics."""
+        base = self.get_session_summary()
+        base['is_recording'] = self.is_recording
+        base['rebalancing_cycles_count'] = len(self.rebalancing_cycles)
+        return base
+
     def get_session_summary(self) -> Dict[str, Any]:
         """
         Get a summary of the current evidence session.
@@ -209,7 +233,7 @@ class EvidenceGenerator:
             Dictionary containing session summary statistics
         """
         if not self.frame_buffer:
-            return {'error': 'No frames recorded'}
+            return {'is_recording': self.is_recording, 'frame_count': 0, 'error': 'No frames recorded'}
 
         frames = list(self.frame_buffer)
 
@@ -427,7 +451,7 @@ class EvidenceGenerator:
         for study in self.ablation_studies:
             modality = study['modality_disabled']
             if modality not in modality_changes:
-                modality_changes[modality] = []
+                modality_changes[modality] = {}
 
             for metric, change in study['metric_changes'].items():
                 if metric not in modality_changes[modality]:

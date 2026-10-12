@@ -305,26 +305,30 @@ class DecisionEngine:
 
         elif self.state == SystemState.REBALANCING:
             if self.recovery_action == RecoveryAction.NONE:
-                print("No recovery action needed.")
+                self.recovery_start_time = None
                 self.transition_to(SystemState.VERIFYING)
             else:
-                # Start recovery action
-                self.recovery_start_time = time.time()
+                if self.recovery_start_time is None:
+                    self.recovery_start_time = time.time()
+                    print(f"Starting personalized recovery action: {self.recovery_action.name}")
+                    print(f"Parameters: {self.recovery_parameters}")
                 commands['action'] = f'start_{self.recovery_action.name.lower()}'
                 commands['parameters'] = self.recovery_parameters
-                print(f"Starting personalized recovery action: {self.recovery_action.name}")
-                print(f"Parameters: {self.recovery_parameters}")
-                # We'll stay in REBALANCING state until recovery is done (checked via timeout or completion signal)
+                # Transition to VERIFYING once the active recovery window completes
+                active_window_s = float(getattr(self, 'active_recovery_window_s', 6.0))
+                if time.time() - self.recovery_start_time >= active_window_s:
+                    self.transition_to(SystemState.VERIFYING)
 
         elif self.state == SystemState.VERIFYING:
             # Trigger post-recovery sensing to verify effectiveness
             commands['action'] = 'trigger_sensing'
-            self.transition_to(SystemState.ANALYZING)  # Go to analyzing to get post-recovery ML results
+            self.recovery_start_time = None
+            self.transition_to(SystemState.ANALYZING)
 
         elif self.state == SystemState.ERROR:
             # Handle error (e.g., log, alert, safe shutdown)
             commands['action'] = 'error_handler'
-            # After error, we might go to idle or remain in error
+            self.recovery_start_time = None
             self.transition_to(SystemState.IDLE)
 
         elif self.state == SystemState.COMPLETE:
@@ -336,9 +340,35 @@ class DecisionEngine:
         if self.state == SystemState.REBALANCING and self.recovery_start_time:
             if time.time() - self.recovery_start_time > self.max_recovery_time:
                 print("Recovery timeout exceeded")
+                self.recovery_start_time = None
                 self.transition_to(SystemState.ERROR)
 
         return commands
+
+    def trigger_manual_rebalance(self, action_name: Optional[str] = None) -> Dict[str, Any]:
+        """Force an immediate active rebalancing cycle (invoked by POST /api/rebalance/trigger)."""
+        if action_name:
+            name_upper = action_name.upper()
+            if hasattr(RecoveryAction, name_upper):
+                self.recovery_action = getattr(RecoveryAction, name_upper)
+        if self.recovery_action == RecoveryAction.NONE:
+            mode = self.ml_results.get('degradation_mode', DegradationMode.HEALTHY)
+            self.recovery_action = self.mode_to_action.get(mode, RecoveryAction.BALANCING)
+            if self.recovery_action == RecoveryAction.NONE:
+                self.recovery_action = RecoveryAction.BALANCING
+        self.recovery_parameters = self.base_action_parameters.get(self.recovery_action, {}).copy()
+        self.recovery_start_time = time.time()
+        self.transition_to(SystemState.REBALANCING)
+        return self.get_status()
+
+    def reset(self):
+        """Reset state machine to clean IDLE state (invoked by POST /api/system/reset)."""
+        self.state = SystemState.IDLE
+        self.last_transition_time = time.time()
+        self.recovery_action = RecoveryAction.NONE
+        self.recovery_parameters = {}
+        self.recovery_start_time = None
+        self.ml_results = {}
 
     def _analyze_results(self):
         """

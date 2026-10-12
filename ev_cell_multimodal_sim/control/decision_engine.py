@@ -46,6 +46,8 @@ class DecisionEngine:
     degradation mode classification, state-of-health estimates, and prediction confidence.
     Now includes a RESENSING state when confidence is low.
     """
+    RecoveryAction = RecoveryAction
+    SystemState = SystemState
 
     def __init__(self):
         # Thresholds from config
@@ -178,3 +180,58 @@ class DecisionEngine:
     def reset_resense_counter(self):
         """Reset the re-sense cycle counter."""
         self.resense_cycle_count = 0
+
+    def rank_pack_cells_weakest_first(self, cells: list) -> list:
+        """
+        Rank a multi-cell pack from weakest (highest priority recipient/recovery target)
+        to strongest (donor candidate) using a composite electro-acoustic-thermal health index:
+            H_i = 0.45 * (SOH_i / 100) + 0.35 * SOC_i + 0.20 * ((V_i - 3.0) / 1.2) - 0.25 * fault_risk_i
+        Returns a list of dicts sorted weakest-first with 'priority_rank', 'composite_score',
+        'recommended_action', and 'shuttling_role' ('ISOLATE', 'RECIPIENT', 'NEUTRAL', 'DONOR').
+        """
+        if not cells:
+            return []
+
+        scored = []
+        socs = [float(c.get('soc', 0.5)) for c in cells]
+        mean_soc = float(np.mean(socs))
+
+        for idx, c in enumerate(cells):
+            cell_id = c.get('cell_id', f"CELL_{idx+1:03d}")
+            soh = float(c.get('soh', 90.0))
+            soc = float(c.get('soc', 0.5))
+            voltage = float(c.get('voltage', 3.0 + 1.2 * soc))
+            mode_idx = int(c.get('degradation_mode_idx', 0))
+            prob = float(c.get('degradation_prob', 0.0))
+
+            action, params = self.decide(mode_idx, prob, soh)
+            fault_penalty = prob * (0.4 if mode_idx in (1, 2, 3, 4) else (1.0 if mode_idx == 5 else 0.0))
+            v_norm = float(np.clip((voltage - 3.0) / 1.2, 0.0, 1.0))
+            composite_score = 0.45 * (soh / 100.0) + 0.35 * soc + 0.20 * v_norm - 0.25 * fault_penalty
+
+            if mode_idx == 5 and prob >= self.degradation_prob_threshold:
+                role = 'ISOLATE'
+            elif soc < mean_soc - 0.015 or soh < 82.0:
+                role = 'RECIPIENT'
+            elif soc > mean_soc + 0.015 and soh >= 85.0 and mode_idx == 0:
+                role = 'DONOR'
+            else:
+                role = 'NEUTRAL'
+
+            scored.append({
+                'cell_id': cell_id,
+                'soh': soh,
+                'soc': soc,
+                'voltage': voltage,
+                'degradation_mode_idx': mode_idx,
+                'degradation_prob': prob,
+                'composite_score': round(float(composite_score), 4),
+                'recommended_action': action.name if hasattr(action, 'name') else str(action),
+                'action_parameters': params,
+                'shuttling_role': role,
+            })
+
+        scored.sort(key=lambda item: item['composite_score'])
+        for rank_idx, item in enumerate(scored, start=1):
+            item['priority_rank'] = rank_idx
+        return scored

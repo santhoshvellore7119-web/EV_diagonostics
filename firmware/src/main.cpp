@@ -210,6 +210,9 @@ void daqTask(void *parameter) {
       // Fuse data into packet
       daq_create_packet(&elecData, &ultraData, &thermData, &packet);
 
+      // Update adaptive uncertainty estimator with new fused telemetry packet
+      uncertainty_update(&packet);
+
       #ifdef ENABLE_EDGE_ML
       EdgeMLResult ml_res;
       if (edge_ml_predict(&packet, &ml_res)) {
@@ -248,8 +251,8 @@ void communicationTask(void *parameter) {
       uart_send_binary(&packet, sizeof(DAQPacket));
       usb_send_binary(&packet, sizeof(DAQPacket));
 
-      // Also send as JSON for debugging (optional)
-      char jsonBuffer[256];
+      // Also send as JSON for debugging / live serial ingestion
+      char jsonBuffer[512];
       serializer_to_json(&packet, jsonBuffer, sizeof(jsonBuffer));
       uart_send_string(jsonBuffer);
       usb_send_string(jsonBuffer);

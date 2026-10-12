@@ -31,13 +31,12 @@ scenarios = {
     'Internal Short'
 };
 
-% Define degradation modes corresponding to scenarios
+% Define degradation modes corresponding to scenarios (6 scenarios)
 degradation_modes = {
     'healthy',
     'li_plating',
     'li_plating',  % Severe also uses li_plating but with different SOH
     'active_material_loss',
-    'electrolyte_decomposition',
     'gas_generation',
     'internal_short'
 };
@@ -317,17 +316,12 @@ function response = simulate_cell_response(model, soc, params, add_noise)
     heat_factor = getfield(P, 'heat_factor');
     if isempty(heat_factor), heat_factor = 1.0; end
     for i = 2:length(t)
-        power_in = energy_per_sample(i-1) * heat_factor;
-        if i > 1
-            power_out = (temperature_rise(i-1) + temp_ambient - temp_ambient) / R_th;
-        else
-            power_out = 0;
-        end
-        dT_dt = (power_in - power_out) / C_th * dt;
-        temperature_rise(i) = temperature_rise(i-1) + dT_dt;
+        power_in = power_dissipated(i-1) * heat_factor;
+        power_out = temperature_rise(i-1) / R_th;
+        dT_dt = (power_in - power_out) / C_th;
+        temperature_rise(i) = temperature_rise(i-1) + dT_dt * dt;
     end
-    dT_dt_final = (energy_per_sample(end) * heat_factor - ...
-                   (temperature_rise(end) + temp_ambient - temp_ambient) / R_th) / C_th;
+    dT_dt_final = (power_dissipated(end) * heat_factor - temperature_rise(end) / R_th) / C_th;
     if add_noise
         temperature_rise = temperature_rise + randn(size(temperature_rise)) * P.THERMAL_NOISE_STD_K * (1 + P.noise_level);
     end

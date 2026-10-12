@@ -163,3 +163,64 @@ def extract_features_from_dict(frame: Dict[str, Any]) -> np.ndarray:
         temperature_c=temp,
         temp_gradient_c_per_s=dT_dt
     )
+
+
+def extract_16d_features_from_waveforms(
+    electrical: Union[np.ndarray, torch.Tensor],
+    ultrasonic: Union[np.ndarray, torch.Tensor],
+    thermal: Union[np.ndarray, torch.Tensor],
+    pulse_current_a: float = 0.50
+) -> np.ndarray:
+    """
+    Extract the 16-D standardized physical feature vector strictly from the
+    synthesized/measured sensor waveforms (electrical, ultrasonic, thermal),
+    without accessing any ground-truth physical state parameters.
+    """
+    e = electrical.detach().cpu().numpy().flatten() if isinstance(electrical, torch.Tensor) else np.asarray(electrical).flatten()
+    u = ultrasonic.detach().cpu().numpy().flatten() if isinstance(ultrasonic, torch.Tensor) else np.asarray(ultrasonic).flatten()
+    t = thermal.detach().cpu().numpy().flatten() if isinstance(thermal, torch.Tensor) else np.asarray(thermal).flatten()
+
+    L = len(e)
+    # 1. Electrical waveform -> bus voltage, current, power, dynamic pulse drop (v_shunt)
+    voltage = 3.0 + 1.5 * e
+    i_pulse = max(2, int(L * 0.3125))
+    i_relax = max(i_pulse + 2, int(L * 0.625))
+    v_pulse = float(np.mean(voltage[:i_pulse]))
+    v_relax = float(np.mean(voltage[i_relax:]))
+    v_bus = v_pulse
+    curr_a = float(pulse_current_a)
+    # Pulse voltage step combines ohmic R0 + partial RC1 relaxation
+    v_step = max(0.004, float(v_relax - v_pulse))
+    v_shunt = v_step
+    p_w = v_bus * curr_a
+
+    # 2. Ultrasonic waveform -> Time of Flight (us), echo peak amplitude, phase polarity
+    e_start = max(1, int(L * 0.18))
+    e_end = max(e_start + 4, int(L * 0.48))
+    echo_win = u[e_start:e_end]
+    idx_rel = int(np.argmax(np.abs(echo_win)))
+    tof_idx = e_start + idx_rel
+    tof_us = float(tof_idx * 0.1 * (256.0 / max(1, L)))
+    pos_pk = float(np.max(echo_win))
+    neg_pk = float(np.min(echo_win))
+    amp_est = float(np.max(np.abs(echo_win)))
+    phase_est = 3.14159 if abs(neg_pk) > abs(pos_pk) * 1.05 else 0.0
+
+    # 3. Thermal waveform -> cell surface temperature (relative to 25C reference) and gradient
+    temp_rise = 20.0 * t
+    temp_c = 25.0 + float(np.mean(temp_rise))
+    n_edge = max(2, int(L * 0.125))
+    dT_dt = float(np.mean(temp_rise[-n_edge:]) - np.mean(temp_rise[:n_edge])) / max(0.5, L * 0.01)
+
+    return extract_16d_features_from_scalars(
+        bus_voltage_v=v_bus,
+        shunt_voltage_v=v_shunt,
+        current_a=curr_a,
+        power_w=p_w,
+        time_of_flight_us=tof_us,
+        amplitude=amp_est,
+        phase_shift=phase_est,
+        temperature_c=temp_c,
+        temp_gradient_c_per_s=dT_dt
+    )
+

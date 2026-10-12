@@ -84,12 +84,21 @@ def run_full_pipeline():
     # Let's reuse the train_model function from models.train, but we need to prepare data loaders.
     from torch.utils.data import TensorDataset, DataLoader, random_split
 
-    # Convert to tensors
-    X_electrical_tensor = torch.from_numpy(X_electrical).float()
-    X_ultrasonic_tensor = torch.from_numpy(X_ultrasonic).float()
-    X_thermal_tensor = torch.from_numpy(X_thermal).float()
-    y_degradation_tensor = torch.from_numpy(y_degradation).long()
-    y_soh_tensor = torch.from_numpy(y_soh).float()
+    def _json_default(obj):
+        if isinstance(obj, (np.integer, int)):
+            return int(obj)
+        if isinstance(obj, (np.floating, float)):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return str(obj)
+
+    # Convert to tensors safely (generate_labeled_dataset returns Python lists of arrays)
+    X_electrical_tensor = torch.from_numpy(np.asarray(X_electrical, dtype=np.float32)).float()
+    X_ultrasonic_tensor = torch.from_numpy(np.asarray(X_ultrasonic, dtype=np.float32)).float()
+    X_thermal_tensor = torch.from_numpy(np.asarray(X_thermal, dtype=np.float32)).float()
+    y_degradation_tensor = torch.from_numpy(np.asarray(y_degradation, dtype=np.int64)).long()
+    y_soh_tensor = torch.from_numpy(np.asarray(y_soh, dtype=np.float32)).float()
 
     # Reshape for CNN: (N, 1, L)
     X_electrical_tensor = X_electrical_tensor.view(-1, 1, P.SEQ_LENGTH)
@@ -115,15 +124,16 @@ def run_full_pipeline():
     )
 
     # Create data loaders
-    train_loader = DataLoader(train_dataset, batch_size=P.BATCH_SIZE, shuffle=True, num_workers=2)
-    val_loader = DataLoader(val_dataset, batch_size=P.BATCH_SIZE, shuffle=False, num_workers=2)
-    test_loader = DataLoader(test_dataset, batch_size=P.BATCH_SIZE, shuffle=False, num_workers=2)
+    train_loader = DataLoader(train_dataset, batch_size=P.BATCH_SIZE, shuffle=True, num_workers=0)
+    val_loader = DataLoader(val_dataset, batch_size=P.BATCH_SIZE, shuffle=False, num_workers=0)
+    test_loader = DataLoader(test_dataset, batch_size=P.BATCH_SIZE, shuffle=False, num_workers=0)
 
-    # Initialize model
+    # Initialize model (match evaluate_model default fusion_type='uncertainty_attention')
+    fusion_mode = getattr(P, 'FUSION_TYPE', 'uncertainty_attention')
     model = MultiBranchFusionNet(
         seq_length=P.SEQ_LENGTH,
         num_degradation_classes=P.NUM_DEGRADATION_MODES,
-        fusion_type=getattr(P, 'FUSION_TYPE', 'concat')
+        fusion_type=fusion_mode
     )
 
     # Loss functions
@@ -138,7 +148,7 @@ def run_full_pipeline():
     print(f"    Batch size: {P.BATCH_SIZE}")
     print(f"    Learning rate: {P.LEARNING_RATE}")
     print(f"    Epochs: {P.NUM_EPOCHS}")
-    print(f"    Fusion type: {getattr(P, 'FUSION_TYPE', 'concat')}")
+    print(f"    Fusion type: {fusion_mode}")
     history = train_model(model, train_loader, val_loader, criterion_cls, optimizer,
                           torch.device('cuda' if torch.cuda.is_available() else 'cpu'),
                           num_epochs=P.NUM_EPOCHS, use_uncertainty=True)
@@ -172,7 +182,7 @@ def run_full_pipeline():
         'metrics': results
     }
     with open('results/evaluation_results.json', 'w') as f:
-        json.dump(evaluation_results, f, indent=2)
+        json.dump(evaluation_results, f, indent=2, default=_json_default)
     print("  Evaluation results saved to results/evaluation_results.json")
     print()
 
@@ -215,7 +225,7 @@ def run_full_pipeline():
         'test_cases': decisions
     }
     with open('results/decision_results.json', 'w') as f:
-        json.dump(decision_results, f, indent=2)
+        json.dump(decision_results, f, indent=2, default=_json_default)
     print("  Decision results saved to results/decision_results.json")
     print()
 
@@ -268,7 +278,7 @@ def run_full_pipeline():
         'recovery_actions': recovery_results
     }
     with open('results/rebalancing_results.json', 'w') as f:
-        json.dump(rebalancing_results, f, indent=2)
+        json.dump(rebalancing_results, f, indent=2, default=_json_default)
     print("  Rebalancing results saved to results/rebalancing_results.json")
     print()
 
@@ -300,7 +310,7 @@ def run_full_pipeline():
     report['pipeline_execution']['end_time'] = datetime.now().isoformat()
 
     with open('results/final_report.json', 'w') as f:
-        json.dump(report, f, indent=2)
+        json.dump(report, f, indent=2, default=_json_default)
     print("  Final report saved to results/final_report.json")
     print()
 

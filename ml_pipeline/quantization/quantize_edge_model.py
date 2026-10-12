@@ -245,6 +245,49 @@ extern "C" {{
     print(f"[SAVED] Quantization metadata: {quantized_json}", flush=True)
     print(f"Total int8 weights: {quantized_meta['total_int8_weight_bytes']} bytes (~{quantized_meta['total_int8_weight_bytes']/1024.0:.2f} KB)", flush=True)
 
+    # 5. Export MATLAB .mat weight files for Simulink / MATLAB Digital Twin
+    try:
+        import scipy.io as sio
+        mat_dirs = [
+            os.path.join(project_root, 'matlab_simulink_demo', 'models'),
+            os.path.join(project_root, 'ml_pipeline', 'models'),
+        ]
+        edge_mat_dict = {k: v.detach().cpu().numpy().astype(np.float32) for k, v in model.state_dict().items()}
+        edge_mat_dict.update({
+            'W1': w1_fused.astype(np.float32),
+            'B1': b1_fused.astype(np.float32),
+            'W2': w2_fused.astype(np.float32),
+            'B2': b2_fused.astype(np.float32),
+            'W3': w3.astype(np.float32),
+            'B3': b3.astype(np.float32),
+            'W_CLS': w_cls.astype(np.float32),
+            'B_CLS': b_cls.astype(np.float32),
+            'W_SOH_M': w_soh_m.astype(np.float32),
+            'B_SOH_M': b_soh_m.astype(np.float32),
+            'W_SOH_V': w_soh_v.astype(np.float32),
+            'B_SOH_V': b_soh_v.astype(np.float32),
+            'W_GATE': w_gate.astype(np.float32),
+            'B_GATE': b_gate.astype(np.float32),
+        })
+        for m_dir in mat_dirs:
+            os.makedirs(m_dir, exist_ok=True)
+            edge_mat_path = os.path.join(m_dir, 'edge_model_weights.mat')
+            sio.savemat(edge_mat_path, edge_mat_dict)
+            print(f"[EXPORT] MATLAB Edge weights saved: {edge_mat_path}", flush=True)
+
+        teacher_pt = os.path.join(project_root, 'ml_pipeline', 'models', 'fusion_net_trained.pt')
+        if os.path.exists(teacher_pt):
+            t_ckpt = torch.load(teacher_pt, map_location='cpu')
+            t_sd = t_ckpt.get('model_state_dict', t_ckpt)
+            mat_dict = {k.replace('.', '_'): v.detach().cpu().numpy().astype(np.float32) for k, v in t_sd.items()}
+            for m_dir in mat_dirs:
+                fusion_mat_path = os.path.join(m_dir, 'fusion_model_weights.mat')
+                sio.savemat(fusion_mat_path, mat_dict)
+                print(f"[EXPORT] MATLAB Fusion weights saved: {fusion_mat_path}", flush=True)
+    except Exception as e:
+        print(f"[WARN] MATLAB .mat export notice: {e}", flush=True)
+
 
 if __name__ == '__main__':
     export_quantized_edge_model()
+

@@ -15,11 +15,11 @@ const TemperatureChart: React.FC<TemperatureChartProps> = ({ width = 300, height
   // Map true historical data from Redux ring buffer
   const historicalData = history.map((f, idx) => ({
     x: idx,
-    y: f.thermal_temperature || 25.0
+    y: f.thermal_temperature ?? 25.0
   }));
 
   if (historicalData.length === 0 && frame) {
-    historicalData.push({ x: 0, y: frame.thermal_temperature || 25.0 });
+    historicalData.push({ x: 0, y: frame.thermal_temperature ?? 25.0 });
   }
 
   return (

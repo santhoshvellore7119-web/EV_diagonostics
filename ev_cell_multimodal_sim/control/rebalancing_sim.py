@@ -38,8 +38,8 @@ class PIDController:
         # Proportional term
         P = self.Kp * error
 
-        # Integral term
-        self._integral += error * dt
+        # Integral term with anti-windup clamping
+        self._integral = float(np.clip(self._integral + error * dt, -20.0, 20.0))
         I = self.Ki * self._integral
 
         # Derivative term
@@ -72,10 +72,9 @@ class RebalancingSimulator:
     """
 
     def __init__(self):
-        # Initialize controllers for different actions
-        # These are simplified; in reality, we would have more detailed models.
-        self.voltage_pid = PIDController(Kp=0.5, Ki=0.1, Kd=0.01, setpoint=0, output_limits=(-100, 100))
-        self.current_pid = PIDController(Kp=0.4, Ki=0.05, Kd=0.005, setpoint=0, output_limits=(-100, 100))
+        # Tuned closed-loop PID gains for responsive cell voltage & current balancing (A/V and A/A)
+        self.voltage_pid = PIDController(Kp=8.5, Ki=2.4, Kd=0.15, setpoint=0, output_limits=(-5.0, 5.0))
+        self.current_pid = PIDController(Kp=2.5, Ki=0.8, Kd=0.05, setpoint=0, output_limits=(-5.0, 5.0))
 
     def apply_recovery_action(self, action, parameters, cell_soc, duration_s=None, confidence=None, fault_scenario=None):
         """
@@ -165,27 +164,19 @@ class RebalancingSimulator:
             current_a.fill(0.0)
 
         elif action == RecoveryAction.BALANCING:
-            # PID control to maintain a target voltage
+            # PID control to maintain a target voltage with closed-loop SOC & terminal voltage feedback
             target_voltage = parameters.get('target_voltage', 3.7)
-            # We'll simulate the cell's voltage as a function of SOC (simplified OCV)
-            # OCV = 3.0 + 0.5 * SOC (from params)
-            # We'll use a simple feedback loop: if voltage < target, charge; else discharge.
-            # We'll use the PID controller to determine the current.
             self.voltage_pid.setpoint = target_voltage
             self.voltage_pid.reset()
+            running_soc = float(cell_soc)
+            prev_i = 0.0
             for i in range(len(time)):
-                # Estimate the cell's voltage based on current SOC (we don't have SOC dynamics yet, so we'll use initial SOC)
-                # This is a simplification: we assume the voltage doesn't change significantly during the short balancing action.
-                ocv = P.OCV_INTERCEPT + P.OCV_SLOPE * cell_soc
-                # The terminal voltage under load: V = OCV - I * R0 (approximately)
-                # We don't know I yet, so we'll use an iterative approach or assume I is small.
-                # For simplicity, we'll use OCV as the voltage for feedback.
-                voltage_estimate = ocv  # This is not accurate under load, but sufficient for demonstration.
-                # Compute the PID output (which we interpret as a current command, scaled appropriately)
+                ocv = P.OCV_INTERCEPT + P.OCV_SLOPE * running_soc
+                voltage_estimate = ocv + prev_i * P.R0
                 pid_output = self.voltage_pid(voltage_estimate, dt)
-                # Convert PID output to current: we'll assume a gain of 0.1 A per % output
-                current_a[i] = pid_output * 0.1  # A
-                # Update SOC based on this current (we'll do it after the loop)
+                current_a[i] = np.clip(pid_output * 0.5, -5.0, 5.0)
+                prev_i = current_a[i]
+                running_soc = float(np.clip(running_soc + (current_a[i] * dt) / (P.NOMINAL_CAPACITY_AH * 3600.0), 0.0, 1.0))
 
         else:
             # Default: no action

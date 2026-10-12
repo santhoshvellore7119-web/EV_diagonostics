@@ -106,12 +106,22 @@ const ThreeDView: React.FC = () => {
   const isDraggingRef = useRef<boolean>(false);
   const prevMouseRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
-  // UI & Controller State
   const [selectedFormat, setSelectedFormat] = useState<CellFormat>('18650_cylindrical');
   const selectedFormatRef = useRef(selectedFormat);
   useEffect(() => {
     selectedFormatRef.current = selectedFormat;
   }, [selectedFormat]);
+
+  useEffect(() => {
+    const ff = frame?.battery_form_factor as CellFormat | undefined;
+    if (ff && ['18650_cylindrical', '21700_cylindrical', 'prismatic_100ah', 'pouch_60ah'].includes(ff) && ff !== selectedFormatRef.current) {
+      setSelectedFormat(ff);
+    }
+    if (frame?.machine_cycle?.running) {
+      setCycleStage(frame.machine_cycle.stage);
+      setCycleProgress(frame.machine_cycle.progress);
+    }
+  }, [frame?.battery_form_factor, frame?.machine_cycle]);
 
   const [renderMode, setRenderMode] = useState<RenderMode>('realistic');
   const [showWireframe, setShowWireframe] = useState<boolean>(false);
@@ -675,52 +685,79 @@ const ThreeDView: React.FC = () => {
     ctx.lineTo(w, h / 2);
     ctx.stroke();
 
-    // Synthesize/Render A-Scan Trace based on current telemetry
+    // Synthesize/Render A-Scan Trace & Hilbert Analytic Envelope based on current telemetry
     const currentFrame = frameRef.current;
     const tof = currentFrame?.ultrasonic_timeOfFlight || 8.0;
     const atten = currentFrame?.ultrasonic_amplitude !== undefined ? currentFrame.ultrasonic_amplitude : 0.85;
     const degMode = currentFrame?.degradation_mode || 'healthy';
+    const ascan = currentFrame?.ascan_waveform;
 
+    const cy = h / 2;
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = degMode === 'gas_generation' ? '#ff00ff' : degMode === 'li_plating' ? '#f59e0b' : '#38bdf8';
     ctx.beginPath();
 
-    const cy = h / 2;
-    for (let x = 0; x < w; x++) {
-      const t_us = (x / w) * 16.0; // 0 to 16 µs time window
-      let yVal = 0;
-
-      // Front-wall transmission echo
-      if (t_us >= 0.5 && t_us <= 2.5) {
-        const env = Math.exp(-Math.pow((t_us - 1.5) / 0.4, 2));
-        yVal += Math.sin((t_us - 1.5) * 20.0) * env * (h * 0.38);
+    if (ascan && ascan.rf_signal_mv && ascan.rf_signal_mv.length > 0) {
+      const nPts = ascan.rf_signal_mv.length;
+      const maxMv = Math.max(250, ...ascan.rf_signal_mv.map((v) => Math.abs(v)));
+      for (let i = 0; i < nPts; i++) {
+        const px = (i / (nPts - 1)) * w;
+        const py = cy - (ascan.rf_signal_mv[i] / maxMv) * (h * 0.42);
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
       }
+      ctx.stroke();
 
-      // Defect internal scattering echoes
-      if (degMode === 'gas_generation' && t_us >= 3.5 && t_us <= 5.5) {
-        const envDef = Math.exp(-Math.pow((t_us - 4.5) / 0.5, 2)) * 0.7;
-        yVal += Math.sin((t_us - 4.5) * 25.0) * envDef * (h * 0.28);
-      } else if (degMode === 'li_plating' && t_us >= 2.8 && t_us <= 4.2) {
-        const envPlat = Math.exp(-Math.pow((t_us - 3.5) / 0.3, 2)) * 0.5;
-        yVal += Math.sin((t_us - 3.5) * 30.0) * envPlat * (h * 0.22);
+      if (ascan.analytic_envelope_mv && ascan.analytic_envelope_mv.length === nPts) {
+        ctx.strokeStyle = '#22c55e';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        for (let i = 0; i < nPts; i++) {
+          const px = (i / (nPts - 1)) * w;
+          const py = cy - (ascan.analytic_envelope_mv[i] / maxMv) * (h * 0.42);
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
       }
+    } else {
+      for (let x = 0; x < w; x++) {
+        const t_us = (x / w) * 16.0; // 0 to 16 µs time window
+        let yVal = 0;
 
-      // Back-wall structural reflection echo
-      if (t_us >= tof - 1.0 && t_us <= tof + 1.0) {
-        const phase = degMode === 'li_plating' ? Math.PI : 0;
-        const envBack = Math.exp(-Math.pow((t_us - tof) / 0.45, 2)) * atten;
-        yVal += Math.sin((t_us - tof) * 20.0 + phase) * envBack * (h * 0.35);
+        // Front-wall transmission echo
+        if (t_us >= 0.5 && t_us <= 2.5) {
+          const env = Math.exp(-Math.pow((t_us - 1.5) / 0.4, 2));
+          yVal += Math.sin((t_us - 1.5) * 20.0) * env * (h * 0.38);
+        }
+
+        // Defect internal scattering echoes
+        if (degMode === 'gas_generation' && t_us >= 3.5 && t_us <= 5.5) {
+          const envDef = Math.exp(-Math.pow((t_us - 4.5) / 0.5, 2)) * 0.7;
+          yVal += Math.sin((t_us - 4.5) * 25.0) * envDef * (h * 0.28);
+        } else if (degMode === 'li_plating' && t_us >= 2.8 && t_us <= 4.2) {
+          const envPlat = Math.exp(-Math.pow((t_us - 3.5) / 0.3, 2)) * 0.5;
+          yVal += Math.sin((t_us - 3.5) * 30.0) * envPlat * (h * 0.22);
+        }
+
+        // Back-wall structural reflection echo
+        if (t_us >= tof - 1.0 && t_us <= tof + 1.0) {
+          const phase = degMode === 'li_plating' ? Math.PI : 0;
+          const envBack = Math.exp(-Math.pow((t_us - tof) / 0.45, 2)) * atten;
+          yVal += Math.sin((t_us - tof) * 20.0 + phase) * envBack * (h * 0.35);
+        }
+
+        yVal += (Math.random() - 0.5) * 1.5;
+        const py = cy - yVal;
+        if (x === 0) ctx.moveTo(x, py);
+        else ctx.lineTo(x, py);
       }
-
-      yVal += (Math.random() - 0.5) * 1.5;
-      const py = cy - yVal;
-      if (x === 0) ctx.moveTo(x, py);
-      else ctx.lineTo(x, py);
+      ctx.stroke();
     }
-    ctx.stroke();
 
     // ToF Marker Cursor
-    const markerX = (tof / 16.0) * w;
+    const maxTimeUs = ascan?.time_us?.length ? ascan.time_us[ascan.time_us.length - 1] : 16.0;
+    const markerX = Math.min(w - 4, Math.max(4, (tof / maxTimeUs) * w));
     ctx.strokeStyle = '#eab308';
     ctx.setLineDash([3, 3]);
     ctx.beginPath();
@@ -731,8 +768,8 @@ const ThreeDView: React.FC = () => {
 
     ctx.fillStyle = '#38bdf8';
     ctx.font = '10px monospace';
-    ctx.fillText(`ToF: ${tof.toFixed(2)} µs`, markerX + 4, 14);
-    ctx.fillText(`Amp: ${(atten * 100).toFixed(0)}%`, 8, h - 8);
+    ctx.fillText(`ToF: ${tof.toFixed(2)} µs`, Math.min(w - 85, markerX + 4), 14);
+    ctx.fillText(`Amp: ${(atten * 100).toFixed(0)}% | Hilbert Env`, 8, h - 8);
   }, []);
 
   useEffect(() => {
@@ -742,6 +779,7 @@ const ThreeDView: React.FC = () => {
   // Automated 6-Stage Testing Cycle Handler
   const handleStartCycle = async () => {
     setIsCycleRunning(true);
+    fetch('http://localhost:8000/api/machine/cycle/start', { method: 'POST' }).catch(() => {});
     const stages = [
       'CLAMPING_ENGAGED',
       'ACOUSTIC_COUPLING_CHECK',
@@ -779,6 +817,26 @@ const ThreeDView: React.FC = () => {
     updateCameraPosition();
   };
 
+  const getDynamicComponentReading = (comp: ComponentInfo): string => {
+    if (!frame) return comp.liveReading;
+    switch (comp.id) {
+      case 'clamping_actuator':
+        return `Clamping Force: 1.50 kN | Stage: ${cycleStage} (${cycleProgress}%) | Couplant: ENGAGED`;
+      case 'ultrasonic_horns':
+        return `ToF: ${(frame.ultrasonic_timeOfFlight ?? 8.0).toFixed(2)} µs | Amp: ${((frame.ultrasonic_amplitude ?? 0.85) * 100).toFixed(1)}% | SoS: ${(frame.ultrasonic_speedOfSound ?? 1450).toFixed(0)} m/s`;
+      case 'kelvin_probes':
+        return `V_term: ${(frame.electrical_voltage ?? 3.65).toFixed(3)} V | I_load: ${(frame.electrical_current ?? -1.5).toFixed(2)} A | R̂0: ${((frame.ecm_r0_est ?? frame.electrical_resistance ?? 0.03) * 1000).toFixed(1)} mΩ`;
+      case 'thermal_plate':
+        return `T_surf: ${(frame.thermal_temperature ?? 25.0).toFixed(2)} °C | dT/dt: ${(frame.thermal_tempGradient ?? 0.0).toFixed(4)} °C/s | Q_flux: ${(frame.thermal_heatFlux ?? 12.5).toFixed(1)} W/m²`;
+      case 'zvs_rebalancer':
+        return `State: ${frame.rebalancing_state || 'IDLE'} | I_bal: ${(frame.rebalancing_powerStage_actualCurrent ?? 0).toFixed(2)} A | Eff: ${(frame.zvs_efficiency_pct || 92.4).toFixed(1)}%`;
+      case 'cell_core':
+        return `SoC: ${((frame.simulation_soc ?? 0.8) * 100).toFixed(1)}% | SoH: ${(frame.stateOfHealth_value ?? 95.0).toFixed(1)}% | Mode: ${(frame.degradation_mode || 'healthy').toUpperCase()} | RUL: ${frame.rul_remaining_cycles ?? 680} cyc`;
+      default:
+        return comp.liveReading;
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#070a13', color: '#e2e8f0' }}>
       {/* Top Industrial Machine Toolbar */}
@@ -796,7 +854,14 @@ const ThreeDView: React.FC = () => {
           {(['18650_cylindrical', '21700_cylindrical', 'prismatic_100ah', 'pouch_60ah'] as CellFormat[]).map((fmt) => (
             <button
               key={fmt}
-              onClick={() => setSelectedFormat(fmt)}
+              onClick={() => {
+                setSelectedFormat(fmt);
+                fetch('http://localhost:8000/api/battery/parameters/set', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ form_factor: fmt }),
+                }).catch(() => {});
+              }}
               style={{
                 padding: '4px 8px',
                 fontSize: '0.74rem',
@@ -1039,7 +1104,7 @@ const ThreeDView: React.FC = () => {
                 <strong>Specs:</strong> {activeComponent.specs}
               </div>
               <div style={{ fontSize: '0.72rem', color: '#34d399', fontWeight: 600 }}>
-                {activeComponent.liveReading}
+                {getDynamicComponentReading(activeComponent)}
               </div>
             </div>
           )}

@@ -82,11 +82,12 @@ void Process_Acoustic_TC_ToF(AcousticDiagnostics_t* diag, float rx_peak_v) {
     float expected_sound_speed = SPEED_OF_SOUND_REF_MS - (THERMAL_COEFF_ALPHA_MS_C * delta_T) + (CLAMP_PRESSURE_BETA_MS_KPA * delta_P);
     if (expected_sound_speed < 800.0f) expected_sound_speed = 800.0f;
 
-    // Nominal baseline ToF at current temperature
+    // Nominal baseline ToF at reference 25 C vs expected ToF at current temperature/pressure
+    float ref_tof_us = (ACOUSTIC_PATH_LENGTH_M / SPEED_OF_SOUND_REF_MS) * 1e6f;
     float expected_tof_us = (ACOUSTIC_PATH_LENGTH_M / expected_sound_speed) * 1e6f;
 
-    // Temperature-compensated relative acoustic anomaly delta
-    diag->compensated_tof_us = expected_tof_us + (diag->raw_tof_us - expected_tof_us);
+    // Temperature-compensated ToF referenced to 25 C (subtracts benign thermal/clamp transit drift)
+    diag->compensated_tof_us = ref_tof_us + (diag->raw_tof_us - expected_tof_us);
     diag->normalized_attenuation = (rx_peak_v / TARGET_RX_AMPLITUDE_V) * powf(10.0f, (20.0f - diag->pga_gain_db) / 20.0f);
 }
 

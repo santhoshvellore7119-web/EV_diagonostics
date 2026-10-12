@@ -42,8 +42,8 @@ def test_gazebo_sdf_model_structure():
     assert 'cell_4' in links
     assert 'rebalancer_power_stage' in links
 
-    # Verify sensors
-    sensors = [s.attrib.get('name') for s in model.findall('sensor')]
+    # Verify sensors (supports both direct and SDF 1.8 link-nested <sensor> elements)
+    sensors = [s.attrib.get('name') for s in model.findall('.//sensor')]
     assert 'pack_thermal_imager' in sensors
     assert 'pzt_ultrasonic_array' in sensors
 

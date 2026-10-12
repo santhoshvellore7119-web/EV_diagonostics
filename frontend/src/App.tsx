@@ -164,6 +164,43 @@ function App() {
                       <p><strong>Target Voltage:</strong> {frame.rebalancing_powerStage_targetVoltage?.toFixed(2)} V</p>
                       <p><strong>Target Shuttling Current:</strong> {frame.rebalancing_powerStage_targetCurrent?.toFixed(2)} A</p>
 
+                      {/* Online 2-RC RLS / PINN / RUL / Cross-Modal Attention Telemetry Strip */}
+                      <div style={{
+                        marginTop: '10px',
+                        padding: '10px 12px',
+                        background: 'rgba(2, 132, 199, 0.08)',
+                        border: '1px solid rgba(56, 189, 248, 0.25)',
+                        borderRadius: '8px',
+                        fontSize: '0.76rem',
+                        lineHeight: '1.55',
+                        color: '#cbd5e1'
+                      }}>
+                        <div style={{ fontWeight: 700, color: '#38bdf8', marginBottom: '4px', fontSize: '0.80rem' }}>
+                          🧮 Online 2-RC RLS Observer, PINN & RUL Forecast
+                        </div>
+                        <div>
+                          • <strong>2-RC Impedance:</strong>{' '}
+                          R̂0={((frame.ecm_r0_est ?? frame.electrical_resistance ?? 0.030) * 1000).toFixed(1)} mΩ |{' '}
+                          R̂1={((frame.ecm_r1_est ?? 0.015) * 1000).toFixed(1)} mΩ |{' '}
+                          R̂2={((frame.ecm_r2_est ?? 0.012) * 1000).toFixed(1)} mΩ
+                        </div>
+                        <div>
+                          • <strong>PINN Residual:</strong>{' '}
+                          <span style={{ color: (frame.pinn_physics_residual ?? 0) < 0.05 ? '#34d399' : '#f59e0b', fontWeight: 600 }}>
+                            {(frame.pinn_physics_residual ?? 0.002).toFixed(4)}
+                          </span>{' '}
+                          | <strong>RUL:</strong> {frame.rul_remaining_cycles ?? 680} cyc (Knee: {frame.rul_knee_point_cycles ?? 520} cyc)
+                        </div>
+                        {frame.modality_attention_electrical !== undefined && (
+                          <div>
+                            • <strong>Cross-Modal Attention:</strong>{' '}
+                            Elec {((frame.modality_attention_electrical ?? 0.34) * 100).toFixed(0)}% |{' '}
+                            US {((frame.modality_attention_ultrasonic ?? 0.33) * 100).toFixed(0)}% |{' '}
+                            Therm {((frame.modality_attention_thermal ?? 0.33) * 100).toFixed(0)}%
+                          </div>
+                        )}
+                      </div>
+
                       {/* Conditional Efficiency & Power Loss Breakdown (Active Mode Only) */}
                       {isBalancing && (
                         <div style={{

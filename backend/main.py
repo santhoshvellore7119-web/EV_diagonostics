@@ -233,7 +233,7 @@ class DiagnosticFrameBase(BaseModel):
     simulation_stepCount: Optional[int] = None
 
 
-class DiagnosticFrame(DiagnosticFrameBase):
+class DiagnosticFrameResponse(DiagnosticFrameBase):
     pass
 
 
@@ -568,16 +568,16 @@ class BatteryParamUpdateRequest(BaseModel):
 async def set_battery_parameters(params: BatteryParamUpdateRequest):
     """Dynamically set physical parameters across all simulation models in real-time."""
     pdict = {k: v for k, v in params.model_dump().items() if v is not None} if hasattr(params, 'model_dump') else {k: v for k, v in params.dict().items() if v is not None}
-    
-    # Propagate to 3D and Gazebo ingestors
-    for ing in [threed_ingestor, gazebo_ingestor]:
+
+    # Propagate to 3D, Gazebo, and Simulink ingestors
+    for ing in [threed_ingestor, gazebo_ingestor, simulink_ingestor]:
         if hasattr(ing, 'set_parameters'):
             await ing.set_parameters(**pdict)
-            
+
     # Propagate format to machine controller if provided
     if params.form_factor:
         machine_controller.set_cell_format(params.form_factor)
-        
+
     return {"status": "updated", "parameters": pdict}
 
 
@@ -587,6 +587,59 @@ async def get_battery_state():
     if hasattr(active_ingestor, 'engine'):
         return active_ingestor.engine.get_state()
     return {"status": "no_physics_engine_in_mode", "mode": active_mode}
+
+
+@app.post("/api/rebalance/trigger")
+async def trigger_rebalance(action: Optional[str] = None):
+    """Manually trigger closed-loop active rebalancing & cell recovery."""
+    result = rebalancing_processor.trigger_rebalance(action=action)
+    if not evidence_generator.is_recording:
+        evidence_generator.start_recording()
+    return {"status": "triggered", **result}
+
+
+@app.post("/api/system/reset")
+async def reset_system():
+    """Reset rebalancing state machine, ML buffers, evidence recorder, and physics engine to healthy nominal state."""
+    rebalancing_processor.reset()
+    ml_processor.reset_buffers()
+    evidence_generator.clear()
+    await set_simulation_parameters(
+        degradation_mode='healthy',
+        soc=0.5,
+        noise_level=0.05,
+        excitation_amplitude=0.5,
+        ambient_temp_c=25.0,
+        load_current_c=0.0,
+        cycle_count=0
+    )
+    return {"status": "reset", "mode": active_mode, "degradation_mode": "healthy"}
+
+
+@app.post("/api/evidence/start")
+async def start_evidence_recording():
+    """Start recording before/after rebalancing evidence frames."""
+    evidence_generator.start_recording()
+    return {"status": "recording_started", "is_recording": evidence_generator.is_recording}
+
+
+@app.post("/api/evidence/stop")
+async def stop_evidence_recording():
+    """Stop recording evidence frames."""
+    evidence_generator.stop_recording()
+    return {"status": "recording_stopped", "is_recording": evidence_generator.is_recording}
+
+
+@app.get("/api/evidence/summary")
+async def get_evidence_summary():
+    """Get structured before/after active rebalancing efficacy metrics."""
+    return evidence_generator.get_evidence_summary()
+
+
+@app.get("/api/evidence/report")
+async def get_evidence_report():
+    """Generate human-readable diagnostic and recovery efficacy report."""
+    return {"report": evidence_generator.generate_report(), "summary": evidence_generator.get_evidence_summary()}
 
 
 @app.post("/api/simulation/parameters")
@@ -665,17 +718,37 @@ async def websocket_endpoint(websocket: WebSocket):
                     soc = msg.get("soc")
                     noise = msg.get("noise_level")
                     exc = msg.get("excitation_amplitude")
+                    chem = msg.get("chemistry")
+                    fmt = msg.get("form_factor")
+                    t_amb = msg.get("ambient_temp_c")
+                    load_c = msg.get("load_current_c")
+                    cyc = msg.get("cycle_count")
                     await set_simulation_parameters(
                         degradation_mode=deg,
                         soc=soc,
                         noise_level=noise,
-                        excitation_amplitude=exc
+                        excitation_amplitude=exc,
+                        chemistry=chem,
+                        form_factor=fmt,
+                        ambient_temp_c=t_amb,
+                        load_current_c=load_c,
+                        cycle_count=cyc
                     )
+                elif mtype == "trigger_rebalance":
+                    await trigger_rebalance(action=msg.get("action"))
+                elif mtype == "reset_system":
+                    await reset_system()
+                elif "frameId" in msg and "electrical_voltage" in msg:
+                    # Direct DiagnosticFrame ingestion from host_application bridge
+                    firmware_ingestor.last_hardware_packet = msg
+                    firmware_ingestor.is_connected = True
+                    frame_buffer.add(msg)
+                    await manager.broadcast(msg)
             except Exception as e:
                 print(f"Error handling websocket client message: {e}")
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-    except Exception as e:
+    except Exception:
         manager.disconnect(websocket)
 
 
@@ -785,6 +858,13 @@ async def simulate_data():
                 rebalancing_info = rebalancing_processor.process_frame(frame)
                 if rebalancing_info:
                     frame.update(rebalancing_info)
+                    # Closed-loop feedback into active physics engine when rebalancing is active
+                    if rebalancing_info.get("rebalancing_active") and active_ingestor is not None and hasattr(active_ingestor, "engine"):
+                        active_ingestor.engine.apply_rebalancing_feedback(
+                            action=str(rebalancing_info.get("rebalancing_selectedAction", "none")),
+                            current_a=float(rebalancing_info.get("rebalancing_powerStage_actualCurrent", 0.0)),
+                            dt=0.1
+                        )
 
             # 3.5 Generate live A-Scan RF waveform & machine status overlay
             tof_val = float(frame.get('ultrasonic_timeOfFlight', 8.0))
@@ -885,6 +965,20 @@ def _generate_fallback_frame() -> Dict[str, Any]:
         "rebalancing_powerStage_actualVoltage": 0.0,
         "rebalancing_powerStage_pwmDutyCycle": 0.0,
         "rebalancing_executionTime": 0.0,
+
+        # Online 2-RC ECM, EIS, RUL & 4S Pack telemetry
+        "ecm_r0_est": raw_physics["ecm_r0_est"],
+        "ecm_r1_est": raw_physics["ecm_r1_est"],
+        "ecm_c1_est": raw_physics["ecm_c1_est"],
+        "ecm_r2_est": raw_physics["ecm_r2_est"],
+        "ecm_c2_est": raw_physics["ecm_c2_est"],
+        "ecm_v_rc1": raw_physics["ecm_v_rc1"],
+        "ecm_v_rc2": raw_physics["ecm_v_rc2"],
+        "ecm_ocv_est": raw_physics["ecm_ocv_est"],
+        "eis_spectrum": raw_physics["eis_spectrum"],
+        "rul_remaining_cycles": raw_physics["rul_remaining_cycles"],
+        "rul_knee_point_cycles": raw_physics["rul_knee_point_cycles"],
+        "pack_cells": raw_physics["pack_cells"],
 
         # Simulation fields
         "simulation_soc": raw_physics["simulation_soc"],

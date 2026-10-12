@@ -12,7 +12,7 @@ void serializer_to_json(const DAQPacket *packet, char *json_buffer, size_t buffe
   }
 
   int len = snprintf(json_buffer, buffer_size,
-    "{{"
+    "{"
     "\"packet_id\":%u,"
     "\"timestamp_us\":%llu,"
     "\"electrical\":{"
@@ -33,7 +33,7 @@ void serializer_to_json(const DAQPacket *packet, char *json_buffer, size_t buffe
       "\"temp_gradient_c_per_s\":%.3f,"
       "\"timestamp_us\":%u"
     "}"
-    "}}",
+    "}",
     packet->packet_id,
     packet->timestamp_us,
     packet->electrical.bus_voltage_v,

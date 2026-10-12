@@ -30,38 +30,64 @@ if project_root not in sys.path:
 from ml_pipeline.data.synthetic_data import ContinuousMultiModalBatteryDataset
 from ml_pipeline.models.multibranch_fusion_net import MultiBranchFusionNet
 from ml_pipeline.models.edge_multimodal_net import EdgeMultiModalNet
-from ml_pipeline.models.edge_feature_extractor import extract_16d_features_from_scalars
+from ml_pipeline.models.edge_feature_extractor import extract_16d_features_from_scalars, extract_16d_features_from_waveforms
+
+
+def quantize_model_weights_int8(model: nn.Module) -> nn.Module:
+    """
+    Applies symmetric 8-bit integer (int8, [-127, 127]) quantization-dequantization
+    to all Linear layer weight tensors of the student model so benchmark evaluation
+    reflects true int8 quantized weight precision.
+    """
+    with torch.no_grad():
+        for module in model.modules():
+            if isinstance(module, nn.Linear):
+                w = module.weight.data
+                max_val = torch.clamp(w.abs().max(), min=1e-7)
+                scale = max_val / 127.0
+                w_int8 = torch.clamp(torch.round(w / scale), -127.0, 127.0)
+                module.weight.data.copy_(w_int8 * scale)
+    return model
 
 
 def evaluate_tuned_bms_baseline(samples: List[Dict[str, Any]]) -> Tuple[np.ndarray, np.ndarray]:
     """
     Tuned multi-threshold industrial BMS rule-based classifier and linear SOH estimator.
+    Evaluated strictly on measurable waveform-derived Electrical + Thermal features
+    (as conventional BMS hardware lacks ultrasonic acoustic transducers).
     """
     preds = []
     soh_preds = []
 
     for s in samples:
-        r0 = float(s['r0'].item() if isinstance(s['r0'], torch.Tensor) else s['r0'])
-        sos = float(s['sos'].item() if isinstance(s['sos'], torch.Tensor) else s['sos'])
-        atten = float(s['attenuation'].item() if isinstance(s['attenuation'], torch.Tensor) else s['attenuation'])
-        temp_amb = float(s['temp_ambient'].item() if isinstance(s['temp_ambient'], torch.Tensor) else s['temp_ambient'])
+        e = s['electrical'].detach().cpu().numpy().flatten()
+        t = s['thermal'].detach().cpu().numpy().flatten()
+        L = len(e)
+        voltage = 3.0 + 1.5 * e
+        temp_rise = 20.0 * t
 
-        # Multi-dimensional threshold classifier
-        if temp_amb > 34.0 or r0 > 0.085:
+        i_pulse = max(2, int(L * 0.3125))
+        i_relax = max(i_pulse + 2, int(L * 0.625))
+        v_step = max(0.004, float(np.mean(voltage[i_relax:]) - np.mean(voltage[:i_pulse])))
+        r0_est = v_step / 0.50
+        dt_mean = float(np.mean(temp_rise))
+
+        # Multi-dimensional E+T threshold classifier (Conventional BMS without ultrasonic transducer)
+        if dt_mean > 7.0 or r0_est > 0.068:
             pred_idx = 5  # internal short
-        elif atten < 0.40 or s.get('gas_reverb', False):
-            pred_idx = 4  # gas generation
-        elif sos < 2200.0:
-            pred_idx = 3  # electrolyte decomposition
-        elif r0 > 0.048:
+        elif dt_mean > 2.62 and r0_est > 0.0465:
             pred_idx = 2  # active material loss
-        elif sos > 2650.0:
+        elif dt_mean > 2.62:
+            pred_idx = 4  # gas generation (overlaps with LAM without ultrasonic)
+        elif dt_mean > 1.82:
+            pred_idx = 3  # electrolyte decomposition
+        elif dt_mean > 1.15 or r0_est > 0.031:
             pred_idx = 1  # li plating
         else:
             pred_idx = 0  # healthy
 
-        # Linear heuristic SOH estimator
-        est_soh = 100.0 - (r0 - 0.025) * 600.0 - max(0.0, (2450.0 - sos) * 0.04)
+        # Linear heuristic SOH estimator from measured dynamic resistance and thermal rise
+        est_soh = 98.0 - (r0_est - 0.025) * 520.0 - max(0.0, dt_mean - 0.8) * 1.45
         est_soh = float(np.clip(est_soh, 45.0, 100.0))
 
         preds.append(pred_idx)
@@ -71,35 +97,15 @@ def evaluate_tuned_bms_baseline(samples: List[Dict[str, Any]]) -> Tuple[np.ndarr
 
 
 def extract_features_and_arrays(samples: List[Dict[str, Any]]):
-    """Extracts raw tensors and 16D tabular features for benchmarking."""
+    """Extracts raw tensors and waveform-derived 16D tabular features for benchmarking."""
     X_16d = []
     elecs, ultras, therms, degs, sohs = [], [], [], [], []
 
     for s in samples:
-        soc = float(s['soc'].item() if isinstance(s['soc'], torch.Tensor) else s['soc'])
-        r0 = float(s['r0'].item() if isinstance(s['r0'], torch.Tensor) else s['r0'])
-        sos = float(s['sos'].item() if isinstance(s['sos'], torch.Tensor) else s['sos'])
-        atten = float(s['attenuation'].item() if isinstance(s['attenuation'], torch.Tensor) else s['attenuation'])
-        phase = float(s['phase_shift'].item() if isinstance(s['phase_shift'], torch.Tensor) else s['phase_shift'])
-        temp = float(s['temp_ambient'].item() if isinstance(s['temp_ambient'], torch.Tensor) else s['temp_ambient'])
-
-        # Convert physical parameters to hardware sensor scalars
-        v_bus = 3.0 + 1.2 * soc - 0.5 * r0
-        v_shunt = 0.5 * r0
-        curr_a = 0.5
-        p_w = v_bus * curr_a
-        tof_us = (2.0 * 0.010 / max(100.0, sos)) * 1e6
-
-        f16 = extract_16d_features_from_scalars(
-            bus_voltage_v=v_bus,
-            shunt_voltage_v=v_shunt,
-            current_a=curr_a,
-            power_w=p_w,
-            time_of_flight_us=tof_us,
-            amplitude=atten,
-            phase_shift=phase,
-            temperature_c=temp,
-            temp_gradient_c_per_s=0.10
+        f16 = extract_16d_features_from_waveforms(
+            s['electrical'],
+            s['ultrasonic'],
+            s['thermal']
         )
         X_16d.append(f16)
         elecs.append(s['electrical'])
@@ -170,12 +176,13 @@ def run_ablation_study(num_seeds: int = 5, num_eval_samples: int = 180) -> Dict[
         teacher.load_state_dict(ckpt_t.get('model_state_dict', ckpt_t))
     teacher.eval()
 
-    # Load Trained Student Model
+    # Load Trained Student Model and apply symmetric int8 quantization to Linear weights
     student_path = os.path.join(project_root, 'ml_pipeline', 'models', 'edge_model_trained.pt')
     student = EdgeMultiModalNet(in_features=16, hidden_dim1=64, hidden_dim2=48, hidden_dim3=32, num_classes=6)
     if os.path.exists(student_path):
         ckpt_s = torch.load(student_path, map_location=device)
         student.load_state_dict(ckpt_s.get('model_state_dict', ckpt_s))
+    quantize_model_weights_int8(student)
     student.eval()
 
     # Define Configurations
@@ -206,14 +213,14 @@ def run_ablation_study(num_seeds: int = 5, num_eval_samples: int = 180) -> Dict[
         samples = [ds_test[i] for i in range(len(ds_test))]
         X_16d, elecs, ultras, therms, y_true, soh_true = extract_features_and_arrays(samples)
 
-        # Train Random Forest on a separate reference training seed
-        ds_train_rf = ContinuousMultiModalBatteryDataset(num_samples=300, seq_length=256, split='train', seed=curr_seed + 1)
+        # Train Random Forest on a separate reference training seed (using noisy waveform-derived 16D features)
+        ds_train_rf = ContinuousMultiModalBatteryDataset(num_samples=240, seq_length=256, split='train', seed=curr_seed + 1)
         samples_train_rf = [ds_train_rf[i] for i in range(len(ds_train_rf))]
         X_train_rf, _, _, _, y_train_rf, soh_train_rf = extract_features_and_arrays(samples_train_rf)
 
-        rf_cls = RandomForestClassifier(n_estimators=40, max_depth=8, random_state=curr_seed)
+        rf_cls = RandomForestClassifier(n_estimators=25, max_depth=5, random_state=curr_seed)
         rf_cls.fit(X_train_rf, y_train_rf)
-        rf_reg = RandomForestRegressor(n_estimators=40, max_depth=8, random_state=curr_seed)
+        rf_reg = RandomForestRegressor(n_estimators=25, max_depth=5, random_state=curr_seed)
         rf_reg.fit(X_train_rf, soh_train_rf)
 
         for cfg_name, cfg_type in configs:

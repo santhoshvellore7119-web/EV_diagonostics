@@ -3,7 +3,7 @@ Simulink ingestion module using FMI/FMPy library for co-simulation FMU.
 
 This module loads an exported FMU from Simulink, steps through the simulation,
 and converts output variables to DiagnosticFrame objects.
-Supports genuine FMU co-simulation execution (FMU2Slave) and physical fallback mode.
+Supports genuine FMU co-simulation execution (FMU2Slave) and coupled 2-RC physical mode.
 """
 
 import asyncio
@@ -28,6 +28,11 @@ from backend.physics_constants import (
 )
 
 try:
+    from backend.battery_physics import DynamicBatteryPhysicsEngine
+except ImportError:
+    from battery_physics import DynamicBatteryPhysicsEngine
+
+try:
     import fmpy
     from fmpy import read_model_description, extract
     from fmpy.fmi2 import FMU2Slave
@@ -37,7 +42,10 @@ except ImportError:
 
 class SimulinkIngestor:
     def __init__(self, fmu_path: str = "", soc: float = 0.5, excitation_amplitude: float = 0.5,
-                 degradation_mode: str = "healthy", noise_level: float = 0.05):
+                 degradation_mode: str = "healthy", noise_level: float = 0.05,
+                 chemistry: str = "nmc_811", form_factor: str = "18650_cylindrical",
+                 ambient_temp_c: float = 25.0, load_current_c: float = 0.0,
+                 cycle_count: int = 0):
         """
         Initialize the Simulink ingestor.
 
@@ -63,6 +71,17 @@ class SimulinkIngestor:
         self.frame_id_counter = 0
         self.data_origin = "FALLBACK"
 
+        self.engine = DynamicBatteryPhysicsEngine(chemistry=chemistry, form_factor=form_factor)
+        self.engine.set_parameters(
+            soc=soc,
+            degradation_mode=degradation_mode,
+            ambient_temp_c=ambient_temp_c,
+            load_current_c=load_current_c,
+            cycle_count=cycle_count,
+            noise_level=noise_level,
+            excitation_amplitude_a=excitation_amplitude,
+        )
+
         # Variables to store latest outputs from FMU
         self.latest_outputs = {}
 
@@ -73,6 +92,7 @@ class SimulinkIngestor:
     @degradation_mode.setter
     def degradation_mode(self, value: str):
         self._degradation_mode = str(value)
+        self.engine.set_parameters(degradation_mode=str(value))
 
     @property
     def soc(self) -> float:
@@ -81,6 +101,7 @@ class SimulinkIngestor:
     @soc.setter
     def soc(self, value: float):
         self._soc = max(0.0, min(1.0, float(value)))
+        self.engine.set_parameters(soc=self._soc)
 
     @property
     def noise_level(self) -> float:
@@ -89,6 +110,7 @@ class SimulinkIngestor:
     @noise_level.setter
     def noise_level(self, value: float):
         self._noise_level = max(0.0, min(1.0, float(value)))
+        self.engine.set_parameters(noise_level=self._noise_level)
 
     @property
     def excitation_amplitude(self) -> float:
@@ -97,6 +119,59 @@ class SimulinkIngestor:
     @excitation_amplitude.setter
     def excitation_amplitude(self, value: float):
         self._excitation_amplitude = max(0.0, float(value))
+        self.engine.set_parameters(excitation_amplitude_a=self._excitation_amplitude)
+
+    @property
+    def chemistry(self) -> str:
+        return self.engine.chemistry
+
+    @chemistry.setter
+    def chemistry(self, value: str):
+        self.engine.set_parameters(chemistry=str(value))
+
+    @property
+    def form_factor(self) -> str:
+        return self.engine.form_factor
+
+    @form_factor.setter
+    def form_factor(self, value: str):
+        self.engine.set_parameters(form_factor=str(value))
+
+    @property
+    def ambient_temp_c(self) -> float:
+        return self.engine.ambient_temp_c
+
+    @ambient_temp_c.setter
+    def ambient_temp_c(self, value: float):
+        self.engine.set_parameters(ambient_temp_c=float(value))
+
+    @property
+    def load_current_c(self) -> float:
+        return self.engine.load_current_c
+
+    @load_current_c.setter
+    def load_current_c(self, value: float):
+        self.engine.set_parameters(load_current_c=float(value))
+
+    @property
+    def cycle_count(self) -> int:
+        return self.engine.cycle_count
+
+    @cycle_count.setter
+    def cycle_count(self, value: int):
+        self.engine.set_parameters(cycle_count=int(value))
+
+    async def set_parameters(self, **kwargs):
+        """Update Simulink simulation parameters dynamically."""
+        if 'soc' in kwargs and kwargs['soc'] is not None:
+            self.soc = float(kwargs['soc'])
+        if 'degradation_mode' in kwargs and kwargs['degradation_mode'] is not None:
+            self.degradation_mode = str(kwargs['degradation_mode'])
+        if 'noise_level' in kwargs and kwargs['noise_level'] is not None:
+            self.noise_level = float(kwargs['noise_level'])
+        if 'excitation_amplitude' in kwargs and kwargs['excitation_amplitude'] is not None:
+            self.excitation_amplitude = float(kwargs['excitation_amplitude'])
+        self.engine.set_parameters(**kwargs)
 
     async def initialize(self):
         """Initialize the FMU co-simulation instance or physical fallback."""
@@ -113,7 +188,7 @@ class SimulinkIngestor:
         try:
             self.model_description = read_model_description(self.fmu_path)
             self.unzipdir = extract(self.fmu_path)
-            
+
             # Map scalar variables from modelDescription.xml
             for variable in self.model_description.modelVariables:
                 self.value_references[variable.name] = variable.valueReference
@@ -131,7 +206,7 @@ class SimulinkIngestor:
             self.fmu.exitInitializationMode()
             self.data_origin = "FMU"
             self.is_initialized = True
-        except Exception as e:
+        except Exception:
             self.data_origin = "FALLBACK"
             self.is_initialized = True
 
@@ -172,14 +247,15 @@ class SimulinkIngestor:
 
             self.latest_outputs = outputs
             return self._convert_to_diagnostic_frame(outputs)
-        except Exception as e:
+        except Exception:
             return self._simulate_frame()
 
     def _convert_to_diagnostic_frame(self, outputs: Dict[str, Any]) -> Dict[str, Any]:
         """Convert FMU outputs to DiagnosticFrame format."""
+        raw_physics = self.engine.step(dt=self.step_size)
         mode = self.degradation_mode
         phys = DEGRADATION_PHYSICS_PARAMS.get(mode, DEGRADATION_PHYSICS_PARAMS['healthy'])
-        r0 = float(outputs.get("v_cell", phys['r0']))
+        r0 = float(outputs.get("r0_cell", outputs.get("r0", phys['r0'])))
         tof_us = float(outputs.get("tof_cell", (2.0 * ULTRASONIC_PATH_LENGTH_M / phys['sos']) * 1e6))
         sos = float(outputs.get("c_cell", phys['sos']))
         temp = float(outputs.get("t_cell", 25.0))
@@ -190,8 +266,12 @@ class SimulinkIngestor:
             "frameId": str(uuid.uuid4()),
             "source": "simulink",
             "data_origin": "FMU",
-            "cellId": "cell_001",
+            "cellId": f"cell_{self.engine.chemistry}_{self.engine.form_factor}",
             "packId": "pack_001",
+            "battery_chemistry": raw_physics["chemistry"],
+            "battery_chemistry_name": raw_physics["chemistry_name"],
+            "battery_form_factor": raw_physics["form_factor"],
+            "battery_form_factor_name": raw_physics["form_factor_name"],
 
             # Electrical data
             "electrical_voltage": volt,
@@ -243,8 +323,25 @@ class SimulinkIngestor:
             "rebalancing_executionTime": 0.0,
             "zvs_efficiency_pct": 0.0,
 
+            # Online 2-RC ECM, EIS, RUL & 4S Pack telemetry
+            "ecm_r0_est": raw_physics["ecm_r0_est"],
+            "ecm_r1_est": raw_physics["ecm_r1_est"],
+            "ecm_c1_est": raw_physics["ecm_c1_est"],
+            "ecm_r2_est": raw_physics["ecm_r2_est"],
+            "ecm_c2_est": raw_physics["ecm_c2_est"],
+            "ecm_v_rc1": raw_physics["ecm_v_rc1"],
+            "ecm_v_rc2": raw_physics["ecm_v_rc2"],
+            "ecm_ocv_est": raw_physics["ecm_ocv_est"],
+            "eis_spectrum": raw_physics["eis_spectrum"],
+            "rul_remaining_cycles": raw_physics["rul_remaining_cycles"],
+            "rul_knee_point_cycles": raw_physics["rul_knee_point_cycles"],
+            "pack_cells": raw_physics["pack_cells"],
+
             # Simulation fields
             "simulation_soc": self.soc,
+            "simulation_temp_amb": raw_physics["simulation_temp_amb"],
+            "simulation_load_c": raw_physics["simulation_load_c"],
+            "simulation_cycle_count": raw_physics["simulation_cycle_count"],
             "simulation_excitationAmplitude": self.excitation_amplitude,
             "simulation_noiseLevel": self.noise_level,
             "simulation_stepCount": int(self.time / self.step_size) if self.step_size > 0 else self.frame_id_counter
@@ -253,22 +350,21 @@ class SimulinkIngestor:
         return diag.to_dict()
 
     def _simulate_frame(self) -> Dict[str, Any]:
-        """Physical fallback generator with lumped electro-thermal-acoustic dynamics."""
+        """Physical fallback generator with 2-RC electro-thermal-acoustic dynamics."""
         self.frame_id_counter += 1
+        raw_physics = self.engine.step(dt=0.1)
         phys = DEGRADATION_PHYSICS_PARAMS.get(self.degradation_mode, DEGRADATION_PHYSICS_PARAMS['healthy'])
         noise_factor = float(self.noise_level)
 
         r0 = float(phys['r0'] * (1.0 + random.uniform(-0.01, 0.01) * noise_factor))
-        r1 = float(phys['r1'] * (1.0 + random.uniform(-0.01, 0.01) * noise_factor))
         sos = float(phys['sos'] + random.uniform(-5.0, 5.0) * noise_factor)
         attenuation = float(np.clip(phys['attenuation'] + random.uniform(-0.01, 0.01) * noise_factor, 0.15, 1.15))
         phase_shift = float(phys.get('phase_shift', 0.0) + random.uniform(-0.01, 0.01) * noise_factor)
         r_th = float(phys.get('r_th', 2.0))
-        c_th = float(phys.get('c_th', 500.0))
 
         i_pulse = float(self.excitation_amplitude)
         ocv = float(OCV_BASE + OCV_SLOPE * np.clip(self.soc, 0.0, 1.0))
-        voltage = float(ocv - i_pulse * r0 + random.uniform(-0.001, 0.001) * noise_factor)
+        voltage = float(ocv - i_pulse * r0 - raw_physics["ecm_v_rc1"] - raw_physics["ecm_v_rc2"] + random.uniform(-0.001, 0.001) * noise_factor)
         current = float(i_pulse + random.uniform(-0.002, 0.002) * noise_factor)
         power = float(voltage * current)
 
@@ -276,8 +372,7 @@ class SimulinkIngestor:
         tof_s = float(2.0 * ULTRASONIC_PATH_LENGTH_M / max(100.0, sos))
         tof_us = float(tof_s * 1e6)
 
-        # Exact physical lumped thermal calculation without fudge multipliers
-        ambient_temp = 25.0 + (10.0 if self.degradation_mode == 'internal_short' else 0.0)
+        ambient_temp = float(self.engine.ambient_temp_c + (10.0 if self.degradation_mode == 'internal_short' else 0.0))
         p_dissipated = (i_pulse ** 2) * r0 + (5.0 if self.degradation_mode == 'internal_short' else 0.0)
         temp_rise = float(p_dissipated * r_th + random.uniform(-0.02, 0.02) * noise_factor)
         temperature = float(ambient_temp + temp_rise)
@@ -291,8 +386,12 @@ class SimulinkIngestor:
             "frameId": str(uuid.uuid4()),
             "source": "simulink",
             "data_origin": "FALLBACK",
-            "cellId": "cell_001",
+            "cellId": f"cell_{self.engine.chemistry}_{self.engine.form_factor}",
             "packId": "pack_001",
+            "battery_chemistry": raw_physics["chemistry"],
+            "battery_chemistry_name": raw_physics["chemistry_name"],
+            "battery_form_factor": raw_physics["form_factor"],
+            "battery_form_factor_name": raw_physics["form_factor_name"],
 
             # Electrical data
             "electrical_voltage": voltage,
@@ -344,8 +443,25 @@ class SimulinkIngestor:
             "rebalancing_executionTime": 0.0,
             "zvs_efficiency_pct": 0.0,
 
+            # Online 2-RC ECM, EIS, RUL & 4S Pack telemetry
+            "ecm_r0_est": raw_physics["ecm_r0_est"],
+            "ecm_r1_est": raw_physics["ecm_r1_est"],
+            "ecm_c1_est": raw_physics["ecm_c1_est"],
+            "ecm_r2_est": raw_physics["ecm_r2_est"],
+            "ecm_c2_est": raw_physics["ecm_c2_est"],
+            "ecm_v_rc1": raw_physics["ecm_v_rc1"],
+            "ecm_v_rc2": raw_physics["ecm_v_rc2"],
+            "ecm_ocv_est": raw_physics["ecm_ocv_est"],
+            "eis_spectrum": raw_physics["eis_spectrum"],
+            "rul_remaining_cycles": raw_physics["rul_remaining_cycles"],
+            "rul_knee_point_cycles": raw_physics["rul_knee_point_cycles"],
+            "pack_cells": raw_physics["pack_cells"],
+
             # Simulation fields
             "simulation_soc": self.soc,
+            "simulation_temp_amb": raw_physics["simulation_temp_amb"],
+            "simulation_load_c": raw_physics["simulation_load_c"],
+            "simulation_cycle_count": raw_physics["simulation_cycle_count"],
             "simulation_excitationAmplitude": self.excitation_amplitude,
             "simulation_noiseLevel": self.noise_level,
             "simulation_stepCount": self.frame_id_counter

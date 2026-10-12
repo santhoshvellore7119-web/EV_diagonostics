@@ -61,9 +61,63 @@ export interface DiagnosticFrame {
 
   // Simulation fields (optional)
   simulation_soc?: number;
+  simulation_temp_amb?: number;
+  simulation_load_c?: number;
+  simulation_cycle_count?: number;
   simulation_excitationAmplitude?: number;
   simulation_noiseLevel?: number;
   simulation_stepCount?: number;
+
+  // Battery chemistry & geometry
+  battery_chemistry?: string;
+  battery_chemistry_name?: string;
+  battery_form_factor?: string;
+  battery_form_factor_name?: string;
+
+  // Online 2-RC ECM & EIS Nyquist Observer
+  ecm_r0_est?: number;
+  ecm_r1_est?: number;
+  ecm_c1_est?: number;
+  ecm_r2_est?: number;
+  ecm_c2_est?: number;
+  ecm_v_rc1?: number;
+  ecm_v_rc2?: number;
+  ecm_ocv_est?: number;
+  eis_spectrum?: Array<{
+    freq_hz: number;
+    z_real_ohm: number;
+    z_imag_ohm: number;
+  }>;
+
+  // PINN & RUL & Cross-Modal Attention
+  pinn_physics_residual?: number;
+  rul_remaining_cycles?: number;
+  rul_knee_point_cycles?: number;
+  modality_attention_electrical?: number;
+  modality_attention_ultrasonic?: number;
+  modality_attention_thermal?: number;
+
+  // Ultrasonic A-Scan Analytic Envelope
+  ascan_waveform?: {
+    time_us: number[];
+    rf_signal_mv: number[];
+    analytic_envelope_mv: number[];
+    instantaneous_phase_rad?: number[];
+  };
+
+  // Automated Machine Cycle & 4S1P Pack Topology
+  machine_cycle?: {
+    running: boolean;
+    stage: string;
+    progress: number;
+  };
+  pack_cells?: Array<{
+    id: number;
+    soc: number;
+    v: number;
+    temp: number;
+    r0_mohm?: number;
+  }>;
 }
 
 export interface DiagnosticFrameState {

@@ -15,12 +15,12 @@ const VoltageChart: React.FC<VoltageChartProps> = ({ width = 300, height = 150 }
   // Map true historical data from Redux ring buffer
   const historicalData = history.map((f, idx) => ({
     x: idx,
-    y: f.electrical_voltage || 3.60
+    y: f.electrical_voltage ?? 3.60
   }));
 
   // Fallback single point if history is empty
   if (historicalData.length === 0 && frame) {
-    historicalData.push({ x: 0, y: frame.electrical_voltage || 3.60 });
+    historicalData.push({ x: 0, y: frame.electrical_voltage ?? 3.60 });
   }
 
   return (

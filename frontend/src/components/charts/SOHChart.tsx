@@ -15,11 +15,11 @@ const SOHChart: React.FC<SOHChartProps> = ({ width = 300, height = 150 }) => {
   // Map true historical data from Redux ring buffer
   const historicalData = history.map((f, idx) => ({
     x: idx,
-    y: f.stateOfHealth_value || 95.0
+    y: f.stateOfHealth_value ?? 95.0
   }));
 
   if (historicalData.length === 0 && frame) {
-    historicalData.push({ x: 0, y: frame.stateOfHealth_value || 95.0 });
+    historicalData.push({ x: 0, y: frame.stateOfHealth_value ?? 95.0 });
   }
 
   return (

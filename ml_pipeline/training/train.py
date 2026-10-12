@@ -98,6 +98,47 @@ def extract_features_from_sample(sample):
     return features
 
 
+def extract_feature_importance(model, data_loader, device):
+    """
+    Compute input-gradient saliency attribution across electrical, ultrasonic, and thermal modalities.
+    Returns a dictionary mapping each modality to its temporal importance profile (numpy array)
+    plus overall modality importance scores.
+    """
+    model.eval()
+    e_grads, u_grads, t_grads = [], [], []
+
+    for batch in data_loader:
+        e = batch['electrical'].to(device).detach().requires_grad_(True)
+        u = batch['ultrasonic'].to(device).detach().requires_grad_(True)
+        t = batch['thermal'].to(device).detach().requires_grad_(True)
+
+        outputs = model(e, u, t)
+        score = outputs['degradation_logits'].max(dim=1)[0].sum() + outputs.get('soh_mean', outputs.get('soh')).sum()
+        model.zero_grad()
+        score.backward()
+
+        if e.grad is not None:
+            e_grads.append(e.grad.detach().abs().mean(dim=0).squeeze(0).cpu().numpy())
+        if u.grad is not None:
+            u_grads.append(u.grad.detach().abs().mean(dim=0).squeeze(0).cpu().numpy())
+        if t.grad is not None:
+            t_grads.append(t.grad.detach().abs().mean(dim=0).squeeze(0).cpu().numpy())
+
+    e_imp = np.mean(e_grads, axis=0) if e_grads else np.zeros(256, dtype=np.float32)
+    u_imp = np.mean(u_grads, axis=0) if u_grads else np.zeros(256, dtype=np.float32)
+    t_imp = np.mean(t_grads, axis=0) if t_grads else np.zeros(256, dtype=np.float32)
+    totals = np.array([np.sum(e_imp), np.sum(u_imp), np.sum(t_imp)], dtype=np.float32)
+    totals_norm = totals / max(1e-8, float(np.sum(totals)))
+
+    return {
+        'electrical': e_imp,
+        'ultrasonic': u_imp,
+        'thermal': t_imp,
+        'modality_summary': totals_norm
+    }
+
+
+
 def tune_threshold_baseline(train_dataset, val_dataset, task='classification'):
     """
     Tune a simple threshold-based baseline for classification or regression.

@@ -3,6 +3,7 @@ ML handler module for the EV Battery Diagnostic System host application.
 Processes and formats machine learning results for display.
 """
 
+from datetime import datetime
 from .logger import get_logger
 import numpy as np
 
@@ -19,6 +20,7 @@ class MLHandler:
 
         # ML result storage
         self.degradation_mode = "Unknown"
+        self.mode_index = -1
         self.degradation_probability = 0.0
         self.state_of_health = 0.0
         self.confidence_level = "Low"  # Low, Medium, High

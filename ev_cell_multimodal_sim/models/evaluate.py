@@ -139,7 +139,7 @@ def run_evaluation(model_path='best_model.pth'):
     X_electrical = np.array(X_electrical, dtype=np.float32).reshape(-1, 1, P.SEQ_LENGTH)
     X_ultrasonic = np.array(X_ultrasonic, dtype=np.float32).reshape(-1, 1, P.SEQ_LENGTH)
     X_thermal = np.array(X_thermal, dtype=np.float32).reshape(-1, 1, P.SEQ_LENGTH)
-    y_degradation = np.array(y_degradation, dtype=np.long)
+    y_degradation = np.array(y_degradation, dtype=np.int64)
     y_soh = np.array(y_soh, dtype=np.float32)
 
     # Create TensorDataset and DataLoader

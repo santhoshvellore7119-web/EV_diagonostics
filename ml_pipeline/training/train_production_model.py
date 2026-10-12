@@ -30,12 +30,12 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f'Training Device: {device}', flush=True)
 
-    num_samples_train = 2400
-    num_samples_test = 600
+    num_samples_train = 960
+    num_samples_test = 240
     seq_length = 256
     batch_size = 32
-    num_epochs = 25
-    learning_rate = 1e-3
+    num_epochs = 18
+    learning_rate = 1.5e-3
     weight_decay = 1e-4
 
     print(f'Generating In-Distribution Training Data (SOC in [0.20, 0.80])...', flush=True)
@@ -114,12 +114,22 @@ def main():
         train_correct = 0
         train_total = 0
 
-        for elec, ultra, therm, deg_labels, soh_labels in train_loader:
+        modality_masks = [
+            (1.0, 0.0, 0.0),  # E only
+            (0.0, 1.0, 0.0),  # U only
+            (0.0, 0.0, 1.0),  # T only
+            (1.0, 1.0, 0.0),  # E+U
+            (1.0, 0.0, 1.0),  # E+T
+            (0.0, 1.0, 1.0),  # U+T
+        ]
+
+        for batch_idx, (elec, ultra, therm, deg_labels, soh_labels) in enumerate(train_loader):
             elec = elec.to(device)
             ultra = ultra.to(device)
             therm = therm.to(device)
             deg_labels = deg_labels.to(device)
             soh_labels = soh_labels.to(device)
+            z = torch.zeros_like(elec)
 
             optimizer.zero_grad()
             outputs = model(elec, ultra, therm)
@@ -127,13 +137,26 @@ def main():
             loss_cls = criterion_cls(outputs['degradation_logits'], deg_labels)
             loss_soh_mse = criterion_mse(outputs['soh_mean'], soh_labels)
             loss_soh_nll = heteroscedastic_loss(outputs['soh_mean'], outputs['soh_logvar'], soh_labels)
-            loss = loss_cls + 30.0 * loss_soh_mse + 0.1 * loss_soh_nll
+            loss_full = loss_cls + 40.0 * loss_soh_mse + 0.1 * loss_soh_nll
+
+            # Unimodal & bimodal consistency losses so every branch and pair is self-sufficient
+            out_e = model(elec, z, z)
+            loss_e = criterion_cls(out_e['degradation_logits'], deg_labels) + 25.0 * criterion_mse(out_e['soh_mean'], soh_labels)
+
+            me, mu, mt = modality_masks[batch_idx % len(modality_masks)]
+            e_m = elec if me > 0.5 else z
+            u_m = ultra if mu > 0.5 else z
+            t_m = therm if mt > 0.5 else z
+            out_m = model(e_m, u_m, t_m)
+            loss_m = criterion_cls(out_m['degradation_logits'], deg_labels) + 25.0 * criterion_mse(out_m['soh_mean'], soh_labels)
+
+            loss = loss_full + 0.45 * loss_e + 0.55 * loss_m
 
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=3.0)
             optimizer.step()
 
-            train_loss += loss.item() * elec.size(0)
+            train_loss += loss_full.item() * elec.size(0)
             _, preds = torch.max(outputs['degradation_logits'], 1)
             train_correct += (preds == deg_labels).sum().item()
             train_total += deg_labels.size(0)

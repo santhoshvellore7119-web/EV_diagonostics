@@ -192,11 +192,12 @@ def main():
     )
     subparsers = parser.add_subparsers(dest="command", help="Subsystem or command to run")
 
-    # Fullstack
-    p_fs = subparsers.add_parser("fullstack", help="Run FastAPI backend + React frontend concurrently")
-    p_fs.add_argument("--host", default="127.0.0.1", help="Backend host")
-    p_fs.add_argument("--backend-port", type=int, default=8000, help="Backend port")
-    p_fs.add_argument("--frontend-port", type=int, default=3000, help="Frontend port")
+    # Fullstack (+ 'start' alias from README.md)
+    for cmd_name in ("fullstack", "start"):
+        p_fs = subparsers.add_parser(cmd_name, help="Run FastAPI backend + React frontend concurrently")
+        p_fs.add_argument("--host", default="127.0.0.1", help="Backend host")
+        p_fs.add_argument("--backend-port", type=int, default=8000, help="Backend port")
+        p_fs.add_argument("--frontend-port", type=int, default=3000, help="Frontend port")
 
     # Backend
     p_be = subparsers.add_parser("backend", help="Run FastAPI backend")
@@ -207,10 +208,11 @@ def main():
     # Frontend
     subparsers.add_parser("frontend", help="Run React frontend development server")
 
-    # Subsystems
+    # Subsystems (+ 'hil' alias from README.md)
     subparsers.add_parser("matlab", help="Run MATLAB/Simulink Digital Twin simulation")
     subparsers.add_parser("gazebo", help="Run Gazebo multi-physics simulation bridge")
     subparsers.add_parser("hardware", help="Run Hardware-in-the-Loop (HIL) test bench")
+    subparsers.add_parser("hil", help="Run Hardware-in-the-Loop (HIL) test bench (alias for hardware)")
     subparsers.add_parser("firmware", help="Run Firmware simulation & static analysis")
     subparsers.add_parser("3d", help="Run 3D Multi-modal physical simulation")
     subparsers.add_parser("ml", help="Run ML Deep Learning pipeline")
@@ -223,7 +225,7 @@ def main():
         parser.print_help()
         sys.exit(0)
 
-    if args.command == "fullstack":
+    if args.command in ("fullstack", "start"):
         sys.exit(run_fullstack(host=args.host, backend_port=args.backend_port, frontend_port=args.frontend_port))
     elif args.command == "backend":
         sys.exit(run_backend(host=args.host, port=args.port, reload=not args.no_reload))
@@ -233,7 +235,7 @@ def main():
         sys.exit(run_subsystem("matlab_simulink_demo/run_matlab_demo.py", extra))
     elif args.command == "gazebo":
         sys.exit(run_subsystem("gazebo/run_gazebo_sim.py", extra))
-    elif args.command == "hardware":
+    elif args.command in ("hardware", "hil"):
         sys.exit(run_subsystem("hardware/run_hardware_hil.py", extra))
     elif args.command == "firmware":
         sys.exit(run_subsystem("firmware/run_firmware_sim.py", extra))

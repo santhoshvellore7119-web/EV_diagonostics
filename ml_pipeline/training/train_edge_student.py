@@ -28,7 +28,7 @@ if ml_pipeline_dir not in sys.path:
 from ml_pipeline.data.synthetic_data import MultiModalBatteryDataset
 from ml_pipeline.models.multibranch_fusion_net import MultiBranchFusionNet
 from ml_pipeline.models.edge_multimodal_net import EdgeMultiModalNet
-from ml_pipeline.models.edge_feature_extractor import extract_16d_features_from_scalars
+from ml_pipeline.models.edge_feature_extractor import extract_16d_features_from_scalars, extract_16d_features_from_waveforms
 
 
 def heteroscedastic_nll_loss(mean: torch.Tensor, logvar: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
@@ -94,39 +94,15 @@ def prepare_distillation_dataset(
             ultra_list.append(s['ultrasonic'])
             therm_list.append(s['thermal'])
             deg_list.append(s['degradation_mode'])
-            
+
             soh_val = float(s['soh'].item() if isinstance(s['soh'], torch.Tensor) else s['soh'])
             soh_list.append(soh_val / 100.0)
 
-            # Derive 16-D physics features directly from dataset sample parameters
-            soc = float(s['soc'].item() if isinstance(s['soc'], torch.Tensor) else s['soc'])
-            r0 = float(s['r0'].item() if isinstance(s['r0'], torch.Tensor) else s['r0'])
-            sos = float(s['sos'].item() if isinstance(s['sos'], torch.Tensor) else s['sos'])
-            amp = float(s['attenuation'].item() if 'attenuation' in s and isinstance(s['attenuation'], torch.Tensor) else (s.get('attenuation') or torch.max(torch.abs(s['ultrasonic'])).item()))
-            phase = float(s['phase_shift'].item() if 'phase_shift' in s and isinstance(s['phase_shift'], torch.Tensor) else s.get('phase_shift', 0.0))
-            temp_amb = float(s['temp_ambient'].item() if 'temp_ambient' in s and isinstance(s['temp_ambient'], torch.Tensor) else s.get('temp_ambient', 25.0))
-            
-            # Physics signal properties
-            i_meas = 0.50
-            v_bus = float(3.0 + 1.2 * soc - i_meas * r0)
-            p_meas = v_bus * i_meas
-            v_shunt = i_meas * r0
-            tof_us = float((2.0 * 0.01 / max(100.0, sos)) * 1e6)
-            
-            temp_rise = float(r0 * (i_meas ** 2) * 30.0)
-            temp = float(temp_amb + temp_rise)
-            dT_dt = float(3.50 if temp_amb > 30.0 else 0.15)
-
-            feat_16d = extract_16d_features_from_scalars(
-                bus_voltage_v=v_bus,
-                shunt_voltage_v=v_shunt,
-                current_a=i_meas,
-                power_w=p_meas,
-                time_of_flight_us=tof_us,
-                amplitude=amp,
-                phase_shift=phase,
-                temperature_c=temp,
-                temp_gradient_c_per_s=dT_dt
+            # Extract 16-D physical features strictly from the synthesized noisy waveforms
+            feat_16d = extract_16d_features_from_waveforms(
+                s['electrical'],
+                s['ultrasonic'],
+                s['thermal']
             )
             features_16d_list.append(torch.from_numpy(feat_16d))
 
@@ -222,8 +198,8 @@ def train_edge_student():
 
     # 2. Prepare Distillation Datasets
     train_set, val_set, test_set, degradation_classes = prepare_distillation_dataset(
-        num_samples_train=2400,
-        num_samples_test=600,
+        num_samples_train=960,
+        num_samples_test=240,
         seq_length=256,
         teacher_model=teacher_model,
         device=device

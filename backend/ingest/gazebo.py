@@ -40,7 +40,7 @@ except ImportError:
 
 
 class GazeboIngestor:
-    def __init__(self, chemistry: str = 'nmc_811', form_factor: str = '21700_cylindrical',
+    def __init__(self, chemistry: str = 'nmc_811', form_factor: str = '18650_cylindrical',
                  soc: float = 0.5, degradation_mode: str = 'healthy',
                  ambient_temp_c: float = 25.0, load_current_c: float = 0.0,
                  cycle_count: int = 0, noise_level: float = 0.05, excitation_amplitude: float = 0.5):
@@ -260,8 +260,8 @@ class GazeboIngestor:
         self.latest_current = msg.data
 
     def _temperature_callback(self, msg):
-        """Callback for temperature topic."""
-        self.latest_temperature = msg.data  # Assuming this is in Celsius
+        """Callback for temperature topic (sensor_msgs/msg/Temperature uses .temperature)."""
+        self.latest_temperature = float(getattr(msg, 'temperature', getattr(msg, 'data', 25.0)))
 
     def _tof_callback(self, msg):
         """Callback for time of flight topic."""
@@ -334,7 +334,6 @@ class GazeboIngestor:
         """
         self.frame_id_counter += 1
         raw_physics = self.engine.step(dt=0.1)
-        r0 = float(self.engine.r0)
 
         tof_us = self.latest_time_of_flight * 1e6 if self.latest_time_of_flight > 0 else raw_physics["ultrasonic_timeOfFlight"]
         sos = (2.0 * self.engine.acoustic_path_m) / (self.latest_time_of_flight) if self.latest_time_of_flight > 0 else raw_physics["ultrasonic_speedOfSound"]
@@ -399,6 +398,20 @@ class GazeboIngestor:
             "rebalancing_powerStage_actualVoltage": 0.0,
             "rebalancing_powerStage_pwmDutyCycle": 0.0,
             "rebalancing_executionTime": 0.0,
+
+            # Online 2-RC ECM, EIS, RUL & 4S Pack telemetry
+            "ecm_r0_est": raw_physics["ecm_r0_est"],
+            "ecm_r1_est": raw_physics["ecm_r1_est"],
+            "ecm_c1_est": raw_physics["ecm_c1_est"],
+            "ecm_r2_est": raw_physics["ecm_r2_est"],
+            "ecm_c2_est": raw_physics["ecm_c2_est"],
+            "ecm_v_rc1": raw_physics["ecm_v_rc1"],
+            "ecm_v_rc2": raw_physics["ecm_v_rc2"],
+            "ecm_ocv_est": raw_physics["ecm_ocv_est"],
+            "eis_spectrum": raw_physics["eis_spectrum"],
+            "rul_remaining_cycles": raw_physics["rul_remaining_cycles"],
+            "rul_knee_point_cycles": raw_physics["rul_knee_point_cycles"],
+            "pack_cells": raw_physics["pack_cells"],
 
             # Simulation fields
             "simulation_soc": raw_physics["simulation_soc"],
@@ -477,6 +490,20 @@ class GazeboIngestor:
             "rebalancing_powerStage_actualVoltage": 0.0,
             "rebalancing_powerStage_pwmDutyCycle": 0.0,
             "rebalancing_executionTime": 0.0,
+
+            # Online 2-RC ECM, EIS, RUL & 4S Pack telemetry
+            "ecm_r0_est": raw_physics["ecm_r0_est"],
+            "ecm_r1_est": raw_physics["ecm_r1_est"],
+            "ecm_c1_est": raw_physics["ecm_c1_est"],
+            "ecm_r2_est": raw_physics["ecm_r2_est"],
+            "ecm_c2_est": raw_physics["ecm_c2_est"],
+            "ecm_v_rc1": raw_physics["ecm_v_rc1"],
+            "ecm_v_rc2": raw_physics["ecm_v_rc2"],
+            "ecm_ocv_est": raw_physics["ecm_ocv_est"],
+            "eis_spectrum": raw_physics["eis_spectrum"],
+            "rul_remaining_cycles": raw_physics["rul_remaining_cycles"],
+            "rul_knee_point_cycles": raw_physics["rul_knee_point_cycles"],
+            "pack_cells": raw_physics["pack_cells"],
 
             # Controllable simulation parameters
             "simulation_soc": raw_physics["simulation_soc"],

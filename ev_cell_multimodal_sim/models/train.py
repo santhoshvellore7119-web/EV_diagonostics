@@ -31,7 +31,8 @@ def gaussian_nll_loss(pred_mean, pred_var, target):
     Loss = 0.5 * (log(var) + (target - mean)^2 / var) + constant
     We ignore the constant term for optimization.
     """
-    return 0.5 * (torch.log(pred_var) + (target - pred_mean)**2 / pred_var)
+    safe_var = torch.clamp(pred_var, min=1e-6)
+    return torch.mean(0.5 * (torch.log(safe_var) + (target - pred_mean)**2 / safe_var))
 
 
 def train_model(model, train_loader, val_loader, criterion_cls, optimizer, device, num_epochs=P.NUM_EPOCHS, use_uncertainty=True):
@@ -183,7 +184,7 @@ def main():
     X_electrical = np.array(X_electrical, dtype=np.float32)
     X_ultrasonic = np.array(X_ultrasonic, dtype=np.float32)
     X_thermal = np.array(X_thermal, dtype=np.float32)
-    y_degradation = np.array(y_degradation, dtype=np.long)
+    y_degradation = np.array(y_degradation, dtype=np.int64)
     y_soh = np.array(y_soh, dtype=np.float32)
 
     # Reshape for CNN: (N, 1, L)
