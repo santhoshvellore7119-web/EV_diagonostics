@@ -62,12 +62,20 @@ try:
     from .eis_drt_engine import eis_drt_engine
     from .coda_wave_interferometry import cwi_analyzer
     from .pack_topology_manager import pack_topology_manager
+    from .gemini_diagnostics_copilot import gemini_copilot
+    from .acoustic_tomography_reconstruction import get_cached_tomography_heatmap
+    from .dual_ukf_joint_estimator import dual_ukf_singleton
+    from .pinn_thermal_electrochemical import get_cached_pinn_evaluation
 except (ImportError, ValueError):
     from machine_cycle import MachineCycleController
     from ascan_synthesizer import synthesize_rf_ascan_waveform
     from eis_drt_engine import eis_drt_engine
     from coda_wave_interferometry import cwi_analyzer
     from pack_topology_manager import pack_topology_manager
+    from gemini_diagnostics_copilot import gemini_copilot
+    from acoustic_tomography_reconstruction import get_cached_tomography_heatmap
+    from dual_ukf_joint_estimator import dual_ukf_singleton
+    from pinn_thermal_electrochemical import get_cached_pinn_evaluation
 
 
 class FrameBuffer:
@@ -1130,6 +1138,67 @@ async def generate_research_report_endpoint():
             "physics_foundation": "2RC Thevenin ECM + 2.0 MHz Guided Wave Acoustic Pulse-Echo + 3D Anisotropic Thermal Field",
         }
     }
+
+
+class CopilotChatRequest(BaseModel):
+    message: str
+
+
+@app.get("/api/copilot/status")
+async def get_copilot_status_endpoint():
+    """Returns AI Copilot status and active model backend."""
+    return gemini_copilot.get_status()
+
+
+@app.post("/api/copilot/analyze_telemetry")
+async def analyze_telemetry_copilot_endpoint():
+    """Generates deep multimodal diagnostics using Gemini / Argon."""
+    latest = frame_buffer.get_latest() or {}
+    pack = pack_topology_manager.step_active_balancing(dt_s=0.0)
+    return gemini_copilot.analyze_diagnostic_telemetry(latest, pack)
+
+
+@app.post("/api/copilot/chat")
+async def chat_copilot_endpoint(req: CopilotChatRequest):
+    """Interactive engineering co-pilot chat."""
+    latest = frame_buffer.get_latest() or {}
+    pack = pack_topology_manager.step_active_balancing(dt_s=0.0)
+    return gemini_copilot.chat(req.message, latest, pack)
+
+
+@app.get("/api/research/tomography_heatmap")
+async def get_tomography_heatmap_endpoint():
+    """Returns 2D ultrasonic wavefield tomography and SAFT beamforming heatmap."""
+    return get_cached_tomography_heatmap()
+
+
+@app.get("/api/research/dual_ukf_telemetry")
+async def get_dual_ukf_telemetry_endpoint():
+    """Returns real-time Dual-UKF joint state (SOC) and parameter (R0, R1, C1, R2, C2) estimates."""
+    latest = frame_buffer.get_latest() or {}
+    i_curr = float(latest.get("electrochemical_current", 0.5))
+    v_curr = float(latest.get("electrochemical_voltage", 3.7))
+    out = dual_ukf_singleton.step(i_prev=i_curr, i_now=i_curr, v_meas=v_curr)
+    return {
+        "soc_pct": round(out["soc_est"] * 100.0, 2),
+        "soc_uncertainty_3sigma_pct": out["soc_uncertainty_3sigma"],
+        "r0_mohm": out["r0_mohm"],
+        "r0_uncertainty_mohm": out["r0_uncertainty_mohm"],
+        "r1_mohm": out["r1_mohm"],
+        "c1_f": out["c1_f"],
+        "r2_mohm": out["r2_mohm"],
+        "c2_f": out["c2_f"],
+        "v_terminal_estimated_v": round(float(out["v_est"]), 3),
+        "v_terminal_measured_v": round(v_curr, 3),
+        "docv_dsoc": round(float(out["docv_dsoc"]), 3),
+        "param_filter_updated": out["param_updated"],
+    }
+
+
+@app.get("/api/research/pinn_temperature_field")
+async def get_pinn_temperature_field_endpoint():
+    """Returns Physics-Informed Neural Network (PINN) 2D (r, z) electro-thermal field."""
+    return get_cached_pinn_evaluation()
 
 
 if __name__ == "__main__":
