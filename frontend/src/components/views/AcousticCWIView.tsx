@@ -86,11 +86,24 @@ const AcousticCWIView: React.FC = () => {
       {/* Header bar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: '1.2rem', color: '#00ff9d', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span>🔊</span> Ultrasonic Guided Wave & Coda Wave Interferometry (CWI)
-          </h2>
-          <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '2px' }}>
-            2.0 MHz Pitch-Catch A-Scan • Waveform Stretching Technique • Microstructural Modulus Perturbation Δv/v
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{
+              background: '#0284c7',
+              color: '#ffffff',
+              fontSize: '0.68rem',
+              fontWeight: 800,
+              padding: '2px 6px',
+              borderRadius: '2px',
+              fontFamily: 'monospace'
+            }}>
+              SECTION 03
+            </span>
+            <h2 style={{ margin: 0, fontSize: '1.05rem', color: '#f8fafc', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+              Ultrasonic Guided Wave & Coda Wave Interferometry (CWI)
+            </h2>
+          </div>
+          <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '3px', fontFamily: 'monospace' }}>
+            2.0 MHz PITCH-CATCH A-SCAN • WAVEFORM STRETCHING • RELATIVE VELOCITY SHIFT Δv/v
           </div>
         </div>
 

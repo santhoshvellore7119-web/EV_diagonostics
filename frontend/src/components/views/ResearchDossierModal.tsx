@@ -93,11 +93,11 @@ const ResearchDossierModal: React.FC<ResearchDossierModalProps> = ({ isOpen, onC
           alignItems: 'center'
         }}>
           <div>
-            <h3 style={{ margin: 0, fontSize: '1.1rem', color: '#38bdf8' }}>
-              📄 Scientific Research Dossier & Diagnostic Certificate
+            <h3 style={{ margin: 0, fontSize: '0.98rem', color: '#f8fafc', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              TECHNICAL DOSSIER & OEM COMPLIANCE CERTIFICATION
             </h3>
-            <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>
-              Autonomous Multi-Modal Ingestion • Heteroscedastic Uncertainty • Active Life Extension
+            <div style={{ fontSize: '0.70rem', color: '#64748b', marginTop: '3px', fontFamily: 'monospace' }}>
+              ISO 26262 ASIL-D SPECIFICATION • CALIBRATED OPERANDO DRT & ACOUSTIC IMPEDANCE REGISTRY
             </div>
           </div>
           <button

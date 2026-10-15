@@ -40,25 +40,25 @@ function App() {
     <div className="App">
       {/* Top Application Bar */}
       <header className="app-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{
-            width: '36px',
-            height: '36px',
-            borderRadius: '8px',
-            background: 'linear-gradient(135deg, #0284c7 0%, #00f0ff 100%)',
+            width: '32px',
+            height: '32px',
+            borderRadius: '4px',
+            background: '#0284c7',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            boxShadow: '0 0 15px rgba(0, 240, 255, 0.4)'
+            border: '1px solid #38bdf8'
           }}>
-            <span style={{ fontSize: '1.2rem' }}>⚡</span>
+            <span style={{ fontSize: '0.85rem', fontWeight: 900, color: '#ffffff', fontFamily: 'monospace' }}>AE</span>
           </div>
           <div>
-            <h1 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, letterSpacing: '-0.02em', color: '#ffffff' }}>
-              AETHER-BMS <span style={{ color: '#00f0ff', fontWeight: 400, fontSize: '0.82rem' }}>| Research & Operando Diagnostics</span>
+            <h1 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, letterSpacing: '0.04em', color: '#ffffff', textTransform: 'uppercase' }}>
+              AETHER-BMS <span style={{ color: '#38bdf8', fontWeight: 600, fontSize: '0.78rem' }}>| OEM DIAGNOSTIC & CALIBRATION WORKSTATION</span>
             </h1>
-            <div className="app-subtitle" style={{ fontSize: '0.73rem', color: '#94a3b8' }}>
-              Multi-Modal Acoustic-Electro-Thermal Waveform Fusion & Active ZVS Flyback Rebalancing
+            <div className="app-subtitle" style={{ fontSize: '0.68rem', color: '#64748b', fontFamily: 'monospace', letterSpacing: '0.02em' }}>
+              ASIL-D COMPLIANT • OPERANDO EIS/DRT • ULTRASONIC NDT • ZVS QUASI-RESONANT BALANCING
             </div>
           </div>
         </div>
@@ -68,53 +68,53 @@ function App() {
           {/* Tab Selection Switcher */}
           <div style={{
             display: 'flex',
-            gap: '4px',
+            gap: '2px',
             background: '#07090e',
-            padding: '4px',
-            borderRadius: '8px',
+            padding: '3px',
+            borderRadius: '4px',
             border: '1px solid #1e293b'
           }}>
             <button
               onClick={() => setActiveTab('cockpit')}
               className={`nav-pill ${activeTab === 'cockpit' ? 'active' : ''}`}
             >
-              🛰️ Cockpit
+              OVERVIEW
             </button>
             <button
               onClick={() => setActiveTab('eis_nyquist')}
               className={`nav-pill ${activeTab === 'eis_nyquist' ? 'active' : ''}`}
             >
-              🔬 EIS & DRT
+              EIS & DRT
             </button>
             <button
               onClick={() => setActiveTab('acoustic_cwi')}
               className={`nav-pill ${activeTab === 'acoustic_cwi' ? 'active' : ''}`}
             >
-              🔊 Acoustic CWI
+              ACOUSTIC CWI
             </button>
             <button
               onClick={() => setActiveTab('tomography_pinn')}
               className={`nav-pill ${activeTab === 'tomography_pinn' ? 'active' : ''}`}
             >
-              🌀 Tomography & PINN
+              TOMOGRAPHY & PINN
             </button>
             <button
               onClick={() => setActiveTab('pack_matrix')}
               className={`nav-pill ${activeTab === 'pack_matrix' ? 'active' : ''}`}
             >
-              🔋 8S Pack Matrix
+              8S PACK MATRIX
             </button>
             <button
               onClick={() => setActiveTab('three_d')}
               className={`nav-pill ${activeTab === 'three_d' ? 'active' : ''}`}
             >
-              🎮 3D Digital Twin
+              3D SIMULATION
             </button>
             <button
               onClick={() => setActiveTab('simulink')}
               className={`nav-pill ${activeTab === 'simulink' ? 'active' : ''}`}
             >
-              🚀 Simulink
+              SIMULINK
             </button>
           </div>
 
@@ -122,17 +122,19 @@ function App() {
           <button
             onClick={() => setIsDossierOpen(true)}
             style={{
-              padding: '6px 12px',
-              background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.25) 0%, rgba(2, 132, 199, 0.25) 100%)',
-              border: '1px solid #a855f7',
-              borderRadius: '6px',
-              color: '#c084fc',
-              fontSize: '0.76rem',
+              padding: '6px 10px',
+              background: '#07090e',
+              border: '1px solid #334155',
+              borderRadius: '3px',
+              color: '#f8fafc',
+              fontSize: '0.70rem',
               fontWeight: 700,
+              fontFamily: 'monospace',
+              letterSpacing: '0.04em',
               cursor: 'pointer'
             }}
           >
-            📄 Scientific Dossier
+            TECHNICAL DOSSIER
           </button>
 
           {/* System status badge */}
@@ -202,8 +204,8 @@ function App() {
                             lineHeight: '1.55',
                             color: '#cbd5e1'
                           }}>
-                            <div style={{ fontWeight: 700, color: '#38bdf8', marginBottom: '4px', fontSize: '0.80rem' }}>
-                              🧮 Operando 2-RC RLS Observer & Degradation Physics
+                            <div style={{ fontWeight: 700, color: '#38bdf8', marginBottom: '4px', fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                              [OBSERVER] OPERANDO 2-RC THEVENIN & CROSS-MODAL ATTENTION
                             </div>
                             <div>
                               • <strong>Impedance:</strong>{' '}
@@ -228,8 +230,8 @@ function App() {
                               border: '1px solid rgba(16, 185, 129, 0.3)',
                               borderRadius: '8px'
                             }}>
-                              <div style={{ fontWeight: 700, color: '#10b981', marginBottom: '4px', fontSize: '0.85rem' }}>
-                                ⚡ ZVS Flyback Efficiency: {zvsEff.toFixed(1)}%
+                              <div style={{ fontWeight: 700, color: '#10b981', marginBottom: '4px', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                [POWER STAGE] ZVS FLYBACK EFFICIENCY: {zvsEff.toFixed(1)}%
                               </div>
                               <div style={{ fontSize: '0.78rem', color: '#cbd5e1' }}>
                                 Shuttled Power: <strong>{pTrans.toFixed(2)} W</strong> | Losses (Cond+Sw+Core): <strong>{pLossTotal.toFixed(3)} W</strong>

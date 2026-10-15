@@ -117,25 +117,39 @@ const PackTopologyView: React.FC = () => {
       {/* Header bar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: '1.2rem', color: '#ffb700', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span>🔋</span> 8S1P Modular Pack Topology & Active ZVS Energy Balancing Matrix
-          </h2>
-          <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '2px' }}>
-            Bidirectional Quasi-Resonant Flyback Bus • Weakest-First Charge Shuttling (η ≥ 92.8%) • Autonomous Contactor Interlocks
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{
+              background: '#0284c7',
+              color: '#ffffff',
+              fontSize: '0.68rem',
+              fontWeight: 800,
+              padding: '2px 6px',
+              borderRadius: '2px',
+              fontFamily: 'monospace'
+            }}>
+              SECTION 05
+            </span>
+            <h2 style={{ margin: 0, fontSize: '1.05rem', color: '#f8fafc', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+              8S1P Modular Pack Topology & Active ZVS Energy Balancing Matrix
+            </h2>
+          </div>
+          <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '3px', fontFamily: 'monospace' }}>
+            BIDIRECTIONAL QUASI-RESONANT FLYBACK BUS • WEAKEST-FIRST SHUTTLING (η ≥ 92.8%) • AUTONOMOUS INTERLOCKS
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <span style={{
-            padding: '5px 12px',
-            borderRadius: '6px',
-            fontSize: '0.75rem',
+            padding: '4px 10px',
+            borderRadius: '2px',
+            fontSize: '0.70rem',
             fontWeight: 700,
-            background: lockout_active ? 'rgba(239, 68, 68, 0.25)' : balancing_active ? 'rgba(16, 185, 129, 0.25)' : 'rgba(100, 116, 139, 0.25)',
-            border: `1px solid ${lockout_active ? '#ef4444' : balancing_active ? '#10b981' : '#64748b'}`,
+            fontFamily: 'monospace',
+            background: lockout_active ? 'rgba(220, 38, 38, 0.2)' : balancing_active ? 'rgba(16, 185, 129, 0.2)' : 'rgba(100, 116, 139, 0.15)',
+            border: `1px solid ${lockout_active ? '#dc2626' : balancing_active ? '#10b981' : '#334155'}`,
             color: lockout_active ? '#f87171' : balancing_active ? '#34d399' : '#cbd5e1'
           }}>
-            {lockout_active ? '⚠️ CRITICAL LOCKOUT (ISOLATED)' : balancing_active ? '⚡ ACTIVE RESONANT SHUTTLING ON' : '● BALANCER IDLE (BALANCED)'}
+            {lockout_active ? 'STRING ISOLATED - LOCKOUT ACTIVE' : balancing_active ? 'ZVS BUS ENGAGED (η ≥ 92.8%)' : 'STRING BALANCED - STANDBY'}
           </span>
         </div>
       </div>
