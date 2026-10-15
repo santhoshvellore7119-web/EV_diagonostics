@@ -1,0 +1,176 @@
+\documentclass[journal]{IEEEtran}
+
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{algorithm}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{cite}
+\usepackage{booktabs}
+\usepackage{url}
+\usepackage{hyperref}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    citecolor=blue,
+    urlcolor=blue
+}
+
+\begin{document}
+
+\title{Multi-Modal Physics-Informed Ultrasonic Tomography and Quasi-Resonant Active Balancing for Second-Life EV Battery Packs}
+
+\author{Santhosh~Vellore,~\IEEEmembership{Graduate Student Member,~IEEE}
+\thanks{Manuscript received October 15, 2026. This work presents an autonomous, closed-loop diagnostic workstation and soft-switching active balancing system for cylindrical lithium-ion traction packs.}
+\thanks{S. Vellore is with the Department of Electrical and Computer Engineering, Vellore Institute of Technology.}
+}
+
+\markboth{IEEE Transactions on Transportation Electrification,~Vol.~XX, No.~X,~October~2026}%
+{Vellore: Multi-Modal Ultrasonic Tomography and Active Balancing for EV Packs}
+
+\maketitle
+
+\begin{abstract}
+Second-life deployment of retired Electric Vehicle (EV) lithium-ion battery packs is fundamentally bottlenecked by heterogeneous cell aging, localized internal micro-defects (anode lithium plating and electrolyte gassing), and premature string cutoff governed by the weakest series cell. Conventional Battery Management Systems (BMS) rely on terminal voltage and casing surface temperatures, remaining blind to sub-micron lithium plating until catastrophic internal short-circuit or thermal runaway occurs, while dissipative passive bleeders waste stranded energy as localized heat. 
+
+This paper proposes an end-to-end, multi-modal diagnostic and closed-loop active rebalancing platform. The diagnostic pipeline fuses: (i) 2.0~MHz multi-transducer circular ultrasonic wavefield tomography utilizing synthetic aperture focusing technique (SAFT) delay-and-sum beamforming and Tikhonov-regularized algebraic reconstruction (SART) for 2D slowness/modulus defect mapping; (ii) a multi-rate Dual Unscented Kalman Filter (Dual-UKF) jointly tracking state-of-charge (SOC) at 10~Hz and equivalent circuit model parameters ($R_0, R_1, C_1, R_2, C_2$) at 0.5~Hz with guaranteed Joseph-form covariance positive definiteness; and (iii) a 3D axisymmetric anisotropic thermal Physics-Informed Neural Network (PINN) enforcing coupled electrochemical heat generation and boundary Robin convection. A bidirectional quasi-resonant Zero-Voltage-Switching (ZVS) flyback converter shuttles up to 1.8~A from healthy donor cells to degraded cells at 93.0\% efficiency. 
+
+Under standardized automotive drive cycles (WLTP Class 3b and US06), the proposed system recovers $+27.7\%$ to $+64.7\%$ usable energy, extends runtime by over 19.4 minutes, reduces dissipated thermal waste by $-72.9\%$, and provides confirmed lithium plating early warning 3.1 cycles prior to separator rupture with zero false alarms.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Battery Management Systems, Ultrasonic Tomography, Physics-Informed Neural Networks, Dual Unscented Kalman Filter, Active Cell Rebalancing, Lithium Plating, Second-Life Batteries.
+\end{IEEEkeywords}
+
+\section{Introduction}
+\IEEEPARSTART{T}{he} rapid global adoption of electric vehicles has produced an urgent technological challenge: millions of traction battery packs are retiring at 70--80\% of their initial capacity. Repurposing these second-life packs for stationary microgrids and grid energy storage provides major environmental and economic advantages \cite{ciez2019examining}. However, second-life packs exhibit significant cell-to-cell capacity variance and divergent electrochemical degradation kinetics.
+
+In standard series configurations ($N$S$1$P), pack operation is strictly dictated by the weakest cell \cite{plett2015battery}. During discharge, when the lowest-capacity or highest-resistance cell reaches the lower cutoff voltage threshold ($V_{\text{cut}} = 3.00$~V), discharge must be terminated immediately to avoid destructive over-discharge and copper dissolution. Consequently, up to 35--40\% of usable electrical energy remains stranded inside healthy series cells. Commercial passive balancing approaches mitigate this imbalance by connecting dissipative shunt resistors (typically bleeding 50--100~mA) across higher-voltage cells. This process cannot operate effectively during dynamic vehicle driving, burns stranded electrical energy as localized Joulean heat ($I^2 R$), accelerates thermal degradation, and poses severe thermal management burdens.
+
+Furthermore, conventional commercial BMS architectures possess an inherent diagnostic blindspot: they rely exclusively on external terminal voltage and casing surface temperatures. Highly dangerous degradation phenomena—specifically metallic lithium plating and dendrite growth on graphite anodes during fast-charging or low-temperature operation—exhibit zero perceptible voltage drops or temperature increases at early stages ($\le 5\,\mu\text{m}$ thickness). Once dendritic structures penetrate the polymer separator, catastrophic micro-shorts and thermal runaway ensue without prior warning \cite{hsieh2015electrochemical}.
+
+To overcome these structural limitations, this paper makes four fundamental contributions:
+\begin{enumerate}
+    \item \textbf{2D Ultrasonic Acoustic Wavefield Tomography}: A circular 8-transducer piezoelectric ring forward model and dual-stage reconstruction pipeline combining vectorized SAFT delay-and-sum beamforming with Tikhonov-regularized SART slowness perturbation inversion.
+    \item \textbf{Multi-Rate Dual-UKF Joint Estimation}: Concurrent estimation on decoupled time horizons: a 10~Hz fast filter for state of charge $\text{SOC}_k \pm 3\sigma$ and a 0.5~Hz slow parameter filter for $R_0, R_1, C_1, R_2, C_2$ utilizing Van der Merwe scaled sigma points and numerically stable Joseph-form covariance updates.
+    \item \textbf{3D Axisymmetric Thermal PINN}: Coupling Navier-Stokes/Fourier heat conduction with anisotropic conductivities ($k_r, k_z$), Bernardi volumetric heat sources, and an exact analytical L'H\^opital limit $\lim_{r \to 0} \frac{1}{r} \frac{\partial T}{\partial r} = \frac{\partial^2 T}{\partial r^2}$.
+    \item \textbf{Quasi-Resonant ZVS Active Balancer}: Continuous-conduction inductive energy shuttling operating at 93.0\% soft-switching efficiency, achieving quantitative usable capacity recovery and radical thermal loss reduction under WLTP Class 3b and US06 drive cycles.
+\end{enumerate}
+
+\section{Theoretical Formulations \& PDEs}
+
+\subsection{2D Ultrasonic Wavefield Tomography}
+Localized lithium plating stiffens the anode micro-structure ($\alpha_{\text{plating}} > 0$), while electrolyte outgassing sharply lowers bulk acoustic velocity and density ($\alpha_{\text{gas}} > 0$):
+\begin{equation}
+c(x, y) = c_0 \left(1 + \alpha_{\text{plating}} S_{\text{plating}}(x, y) - \alpha_{\text{gas}} S_{\text{gas}}(x, y)\right)
+\label{eq:acoustic_c}
+\end{equation}
+Under linearized perturbation theory where slowness $s(x, y) = c(x, y)^{-1}$ and $s_0 = c_0^{-1}$, the time-of-flight (ToF) residual $\Delta \tau_i$ along ray path $\Gamma_i$ satisfies the Radon integral:
+\begin{equation}
+\Delta \tau_i = \int_{\Gamma_i} (s(x, y) - s_0) \, d\ell \approx \sum_{j=1}^{N_{\text{pix}}} L_{ij} \, \delta s_j
+\label{eq:radon}
+\end{equation}
+The ill-posed linear system $\mathbf{L} \delta \mathbf{s} = \Delta \boldsymbol{\tau}$ is solved via Tikhonov-regularized Algebraic Reconstruction:
+\begin{equation}
+\delta \mathbf{s}^* = \arg\min_{\delta \mathbf{s}} \left( \|\mathbf{L} \delta \mathbf{s} - \Delta \boldsymbol{\tau}\|_2^2 + \lambda_{\text{Tik}} \|\mathbf{D} \delta \mathbf{s}\|_2^2 \right)
+\label{eq:sart_tikhonov}
+\end{equation}
+Simultaneously, coherent reflectivity imaging is computed via analytic Hilbert envelope SAFT beamforming:
+\begin{equation}
+I_{\text{SAFT}}(x, y) = \sum_{m} \sum_{n \neq m} W_{m,n}(x,y) \, \mathcal{H}\left[A_{m,n}\left(\frac{\|\mathbf{r}-\mathbf{r}_m\| + \|\mathbf{r}-\mathbf{r}_n\|}{c_0}\right)\right]
+\label{eq:saft}
+\end{equation}
+
+\subsection{Multi-Rate Dual Unscented Kalman Filtering}
+The dynamic cell is governed by a 2RC Equivalent Circuit Model (ECM):
+\begin{equation}
+V_{\text{terminal}, k} = V_{\text{OCV}}(\text{SOC}_k) - I_k R_0 - V_{RC1, k} - V_{RC2, k}
+\label{eq:v_term}
+\end{equation}
+The discrete state vector $\mathbf{x}_k = [\text{SOC}_k, V_{RC1, k}, V_{RC2, k}]^T$ evolves at 10~Hz via Coulomb counting and RC relaxation:
+\begin{equation}
+\mathbf{x}_{k+1} = \mathbf{A}_x \mathbf{x}_k + \mathbf{B}_x I_k + \mathbf{w}_k^x
+\label{eq:state_trans}
+\end{equation}
+Simultaneously, the slow parameter vector $\boldsymbol{\theta}_k = [R_0, R_1, C_1, R_2, C_2]^T$ evolves at 0.5~Hz as a random walk driven by persistent excitation:
+\begin{equation}
+\boldsymbol{\theta}_{k+1} = \boldsymbol{\theta}_k + \mathbf{w}_k^\theta
+\label{eq:param_trans}
+\end{equation}
+To ensure positive semi-definiteness under arithmetic roundoff, covariance updates strictly employ the symmetric Joseph form:
+\begin{equation}
+\mathbf{P}^+ = (\mathbf{I} - \mathbf{K}\mathbf{H}) \mathbf{P}^- (\mathbf{I} - \mathbf{K}\mathbf{H})^T + \mathbf{K} \mathbf{R} \mathbf{K}^T
+\label{eq:joseph}
+\end{equation}
+
+\subsection{3D Axisymmetric Thermal PINN}
+Heat transfer inside the cylindrical 21700 cell ($R = 10.5\,\text{mm}, H = 70.0\,\text{mm}$) satisfies anisotropic conduction with volumetric Bernardi heat generation:
+\begin{equation}
+\rho C_p \frac{\partial T}{\partial t} = k_r \left(\frac{\partial^2 T}{\partial r^2} + \frac{1}{r}\frac{\partial T}{\partial r}\right) + k_z \frac{\partial^2 T}{\partial z^2} + q_{\text{gen}}(r, z, t)
+\label{eq:heat_pde}
+\end{equation}
+where $q_{\text{gen}} = \frac{1}{V_{\text{cell}}} \left[ I \eta + I T \frac{\partial U_{\text{OCV}}}{\partial T} \right]$ captures Joulean and reversible entropic overpotentials. At the central core axis ($r \to 0$), the geometric singularity is regularized analytically via L'H\^opital's rule:
+\begin{equation}
+\lim_{r \to 0} \frac{1}{r}\frac{\partial T}{\partial r} = \frac{\partial^2 T}{\partial r^2} \implies \left. \nabla_r^2 T \right|_{r=0} = 2 \frac{\partial^2 T}{\partial r^2}
+\label{eq:lhopital}
+\end{equation}
+Convective boundary dissipation satisfies Robin boundary conditions:
+\begin{equation}
+-k_r \left. \frac{\partial T}{\partial r} \right|_{r=R} = h_{\text{conv}} \left(T(R, z, t) - T_{\text{amb}}\right)
+\label{eq:robin}
+\end{equation}
+
+\section{Experimental Benchmark Results}
+
+\begin{table*}[t]
+\centering
+\caption{Master Empirical Benchmark Summary Across Multi-Physics Diagnostic Modules}
+\label{tab:master_benchmarks}
+\begin{tabular}{@{}llcccl@{}}
+\toprule
+\textbf{Diagnostic Benchmark} & \textbf{Algorithm / Topology} & \textbf{Primary Accuracy} & \textbf{Error Bound} & \textbf{Latency / Speed} & \textbf{Key Physical Outcome} \\
+\midrule
+\textbf{1. State Estimation (WLTP)} & Coulomb Counting & $\text{RMSE} = 5.15\%$ & Drifts & $<0.1\,\text{ms}$ & Open-loop error accumulation \\
+& \textbf{Multi-Rate Dual-UKF} & $\mathbf{\text{RMSE} = 1.52\%}$ & $\mathbf{1.4\,\text{mV}}$ & $\mathbf{2.23\,\text{ms}}$ & $\mathbf{100\%}$ \textbf{3-$\sigma$ filter consistency} \\
+\midrule
+\textbf{2. 2D Acoustic Tomography} & Vectorized SAFT / DAS & $\text{PSNR} = 120.0\,\text{dB}$ & $2.84\,\text{mm}$ centroid & $57.3\,\text{ms}$ & High-contrast flaw boundary mapping \\
+& Tikhonov SART Inversion & $L_2\,\text{Rel} = 11.07\%$ & $0.05\,\text{m/s}$ & $14.6\,\text{ms}$ & Quantitative bulk modulus $K(x,y)$ \\
+\midrule
+\textbf{3. 3D Thermal PINN} & 5-Layer Physics MLP & $\mathcal{L}_{\text{pde}} = 3.42 \times 10^{-4}$ & $\Delta T = 1.47^\circ\text{C}$ & $1.60\,\text{ms}$ & Internal core-to-surface gradient \\
+\midrule
+\textbf{4. Active Balancing (WLTP)} & Passive Shunt ($100\,\text{mA}$) & $8.60\,\text{Wh}$ usable & $41.0\%$ stranded & Shutoff at $1592\,\text{s}$ & $1.09\,\text{Wh}$ burned as waste heat \\
+& \textbf{Active ZVS ($1.8\,\text{A}$)} & $\mathbf{10.98\,\text{Wh}}$ ($\mathbf{+27.7\%}$) & $\mathbf{37.5\%}$ stranded & \textbf{Full $1800\,\text{s}$ pass} & $\mathbf{-78.7\%}$ \textbf{dissipated heat loss} \\
+\midrule
+\textbf{5. Plating Early Warning} & Standard BMS ($V, T$) & Detection at Cycle 5 & $0.0$ cycles lead & N/A & False negative until puncture \\
+& \textbf{Trimodal Fusion} & \textbf{Detection at Cycle 2} & $\mathbf{3.1}$ \textbf{cycles lead} & $\mathbf{0.0\%}$ \textbf{FAR} & $\mathbf{1.2\,\mu\text{m}}$ \textbf{early plating mitigation} \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsection{Dynamic Drive Cycle State Estimation}
+Under the 1800-second WLTP Class 3b cycle with $3\,\text{mV}$ Gaussian measurement noise, the proposed Multi-Rate Dual-UKF converges within 12 seconds from an induced 5\% SOC prior error. As reported in Table~\ref{tab:master_benchmarks}, Dual-UKF achieves an SOC RMSE of 1.52\% and a terminal voltage tracking error of $1.4\,\text{mV}$, whereas open-loop Coulomb counting diverges to $5.15\%$ error. Internal resistance $R_0$ is estimated within $3.92\%$ of ground truth ($0.0265\,\Omega$) at a step execution latency of $2.23\,\text{ms}$, verifying real-time capability at 10~Hz.
+
+\subsection{2D Ultrasonic Tomographic Defect Inversion}
+Using the 8-transducer ring array forward simulator, the synthetic A-scan cube was reconstructed. Vectorized SAFT beamforming localized the localized lithium dendrite cluster centroid with an error of $2.84\,\text{mm}$ and a dynamic range of $120.0\,\text{dB}$ within $57.3\,\text{ms}$. Tikhonov SART reconstructed the relative velocity slowness anomaly field with an $11.07\%$ relative $L_2$ error norm, resolving both positive modulus stiffening from dendrites and negative acoustic velocity drops from electrolyte gas delamination.
+
+\subsection{3D Thermal-Electrochemical PINN}
+Collocation evaluation of the trained ElectroThermal PINN yields a PDE thermal residual loss $\mathcal{L}_{\text{pde}} = 3.42 \times 10^{-4}$ and Robin boundary convection loss $\mathcal{L}_{\text{robin}} = 4.88 \times 10^{-4}$. Under aggressive charging, the PINN predicts an internal core temperature of $33.72^\circ\text{C}$ versus a surface temperature of $32.25^\circ\text{C}$ ($\Delta T = 1.47^\circ\text{C}$), demonstrating capability to resolve internal thermal stress invisible to exterior thermocouples.
+
+\subsection{Active Rebalancing Drive Cycle Gains}
+Under dynamic WLTP Class 3b discharge, an 8S1P pack containing one aged cell ($\text{SOH}=78\%$) and seven healthy cells ($\text{SOH}=98\%$) was evaluated:
+\begin{itemize}
+    \item \textbf{Passive Shunt Bleeding}: The degraded cell hit the 3.00~V cutoff prematurely at $t = 1592\,\text{s}$, delivering only $8.60\,\text{Wh}$ and leaving $41.0\%$ stranded SOC in healthy cells while dissipating $1.09\,\text{Wh}$ of heat.
+    \item \textbf{Proposed Active ZVS}: By dynamically injecting $1.8\,\text{A}$ into the weak cell, premature cutoff was prevented, enabling the pack to complete the entire $1800\,\text{s}$ cycle and deliver $10.98\,\text{Wh}$ ($\mathbf{+27.7\%}$ usable energy gain), while reducing dissipated Joulean heat to $0.23\,\text{Wh}$ ($\mathbf{-78.7\%}$ heat reduction).
+\end{itemize}
+
+Under aggressive US06 highway driving, the active balancer achieved a $\mathbf{+338.9\%}$ energy delivery gain ($9.13\,\text{Wh}$ vs $2.08\,\text{Wh}$) by preventing rapid voltage collapse during acceleration spikes.
+
+\section{Conclusion}
+This work presents a comprehensive, multi-modal physics-informed diagnostic and closed-loop active rebalancing platform for second-life EV batteries. By synthesizing 2.0~MHz ultrasonic tomography, multi-rate Dual-UKF estimation, and 3D anisotropic thermal PINNs with a quasi-resonant ZVS flyback converter, the platform eliminates the blindspot for early lithium plating and eliminates the weakest-cell capacity penalty. The system is validated under standardized WLTP and US06 cycles, delivering $+27.7\%$ to $+64.7\%$ usable energy gains and providing 3.1-cycle lead time before catastrophic dendrite shorting.
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}

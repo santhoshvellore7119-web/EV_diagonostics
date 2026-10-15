@@ -1,0 +1,92 @@
+{
+  "benchmark_1_state_estimation": {
+    "rmse_soc_coulomb_pct": 5.147,
+    "rmse_soc_dual_ukf_pct": 1.518,
+    "rmse_v_term_mv": 1.37,
+    "r0_estimation_error_pct": 3.92,
+    "filter_consistency_3sigma_pct": 100.0,
+    "execution_time_per_step_ms": 2.593
+  },
+  "benchmark_2_acoustic_tomography": {
+    "plating_centroid_error_mm": 2.84,
+    "saft_reflectivity_psnr_db": 120.0,
+    "sound_velocity_l2_error_pct": 11.07,
+    "saft_reconstruction_time_ms": 57.3,
+    "sart_inversion_time_ms": 14.6
+  },
+  "benchmark_3_thermal_pinn": {
+    "pde_residual_loss": 0.000342,
+    "boundary_robin_loss": 0.000488,
+    "overpotential_thevenin_loss": 0.000115,
+    "core_temperature_max_c": 33.72,
+    "surface_temperature_min_c": 32.25,
+    "delta_t_core_surface_c": 1.47,
+    "evaluation_time_ms": 1601.97
+  },
+  "benchmark_4_active_balancing": {
+    "WLTP Class 3b": {
+      "passive": {
+        "topology": "Passive Shunt (100 mA)",
+        "runtime_s": 1592.0,
+        "energy_wh": 8.601239358190112,
+        "thermal_loss_wh": 1.0941500284213694,
+        "stranded_soc": 40.95145928127096
+      },
+      "active": {
+        "topology": "Proposed Active ZVS (1.8 A)",
+        "runtime_s": 1800.0,
+        "energy_wh": 10.984548972848433,
+        "thermal_loss_wh": 0.2331000000000056,
+        "stranded_soc": 37.467401225479
+      },
+      "energy_gain_pct": 27.7,
+      "heat_reduction_pct": 78.7
+    },
+    "US06 Aggressive": {
+      "passive": {
+        "topology": "Passive Shunt (100 mA)",
+        "runtime_s": 188.0,
+        "energy_wh": 2.079817262960311,
+        "thermal_loss_wh": 0.13091642127454275,
+        "stranded_soc": 46.5412561060021
+      },
+      "active": {
+        "topology": "Proposed Active ZVS (1.8 A)",
+        "runtime_s": 600.0,
+        "energy_wh": 9.128618730104687,
+        "thermal_loss_wh": 0.07770000000000009,
+        "stranded_soc": 40.50731328707774
+      },
+      "energy_gain_pct": 338.9,
+      "heat_reduction_pct": 40.6
+    }
+  },
+  "benchmark_5_silent_plating_ablation": {
+    "ablation_summary": [
+      {
+        "modality": "Standard BMS (V + T)",
+        "accuracy_pct": 100.0,
+        "false_alarm_rate_pct": 0.0,
+        "avg_lead_time_cycles": 0.0
+      },
+      {
+        "modality": "Uni-Modal DRT (R_sei)",
+        "accuracy_pct": 100.0,
+        "false_alarm_rate_pct": 0.0,
+        "avg_lead_time_cycles": 3.5
+      },
+      {
+        "modality": "Uni-Modal Ultrasonic (CWI)",
+        "accuracy_pct": 100.0,
+        "false_alarm_rate_pct": 0.0,
+        "avg_lead_time_cycles": 3.0
+      },
+      {
+        "modality": "Proposed Trimodal Fusion",
+        "accuracy_pct": 100.0,
+        "false_alarm_rate_pct": 0.0,
+        "avg_lead_time_cycles": 3.1
+      }
+    ]
+  }
+}

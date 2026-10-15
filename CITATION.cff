@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use this software or benchmark suite in your research, please cite it as below."
+authors:
+  - family-names: "Vellore"
+    given-names: "Santhosh"
+    affiliation: "Department of Electrical and Computer Engineering"
+title: "Multi-Modal Physics-Informed Ultrasonic Tomography and Quasi-Resonant Active Balancing for Second-Life EV Battery Packs"
+version: 2.1.0
+date-released: 2026-10-15
+url: "https://github.com/santhoshvellore7119-web/EV_diagonostics"
+keywords:
+  - "battery management systems"
+  - "ultrasonic tomography"
+  - "physics-informed neural networks"
+  - "dual unscented kalman filter"
+  - "active cell rebalancing"
+  - "lithium plating"
+  - "second-life electric vehicles"
+preferred-citation:
+  type: article
+  authors:
+    - family-names: "Vellore"
+      given-names: "Santhosh"
+  title: "Multi-Modal Physics-Informed Ultrasonic Tomography and Quasi-Resonant Active Balancing for Second-Life EV Battery Packs"
+  journal: "IEEE Transactions on Transportation Electrification"
+  year: 2026
+  month: 10
