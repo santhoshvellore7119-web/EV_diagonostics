@@ -634,4 +634,54 @@ input[type="range"]::-webkit-slider-thumb {
   }
 }
 
+/* ==========================================================================
+   NAVIGATION PILLS & COCKPIT CONTROLS
+   ========================================================================== */
+.nav-pill {
+  padding: 6px 13px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #94a3b8;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.nav-pill:hover {
+  color: #f1f5f9;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.nav-pill.active {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.15);
+  border-color: rgba(56, 189, 248, 0.45);
+  box-shadow: 0 0 14px rgba(56, 189, 248, 0.25);
+}
+
+/* Glowing cyber-industrial cards */
+.cyber-card {
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  padding: 18px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.cyber-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
 
