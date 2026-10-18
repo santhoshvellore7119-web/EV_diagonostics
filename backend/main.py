@@ -66,6 +66,7 @@ try:
     from .acoustic_tomography_reconstruction import get_cached_tomography_heatmap
     from .dual_ukf_joint_estimator import dual_ukf_singleton
     from .pinn_thermal_electrochemical import get_cached_pinn_evaluation
+    from .spm_electrochemical_plating_model import spme_solver_singleton
 except (ImportError, ValueError):
     from machine_cycle import MachineCycleController
     from ascan_synthesizer import synthesize_rf_ascan_waveform
@@ -76,6 +77,22 @@ except (ImportError, ValueError):
     from acoustic_tomography_reconstruction import get_cached_tomography_heatmap
     from dual_ukf_joint_estimator import dual_ukf_singleton
     from pinn_thermal_electrochemical import get_cached_pinn_evaluation
+    from spm_electrochemical_plating_model import spme_solver_singleton
+
+try:
+    from common.drive_cycles import (
+        generate_wltp_class3_profile,
+        generate_us06_profile,
+        generate_udds_profile,
+        generate_hppc_pulse_profile,
+    )
+except (ImportError, ValueError):
+    from drive_cycles import (
+        generate_wltp_class3_profile,
+        generate_us06_profile,
+        generate_udds_profile,
+        generate_hppc_pulse_profile,
+    )
 
 
 class FrameBuffer:
@@ -1199,6 +1216,137 @@ async def get_dual_ukf_telemetry_endpoint():
 async def get_pinn_temperature_field_endpoint():
     """Returns Physics-Informed Neural Network (PINN) 2D (r, z) electro-thermal field."""
     return get_cached_pinn_evaluation()
+
+
+@app.get("/api/research/spm_plating_state")
+async def get_spm_plating_state_endpoint(
+    current_a: Optional[float] = None,
+    temp_c: Optional[float] = None,
+    dt: float = 0.5
+):
+    """
+    Returns real-time Single Particle Model with Electrolyte (SPMe) state,
+    solid-state concentration profile c_s(r), and thermodynamic lithium plating overpotential.
+    """
+    latest = frame_buffer.get_latest() or {}
+    i_val = current_a if current_a is not None else float(latest.get("electrochemical_current", -2.5))
+    t_val = temp_c if temp_c is not None else float(latest.get("thermal_surfaceTemperature", 25.0))
+    res = spme_solver_singleton.step(current_a=i_val, temp_c=t_val, dt=dt)
+    res["solid_concentration_profile"] = np.round(spme_solver_singleton.c_s, 1).tolist()
+    res["radial_mesh_norm"] = np.round(spme_solver_singleton.r_centers / spme_solver_singleton.p.r_p_anode, 3).tolist()
+    return res
+
+
+@app.post("/api/research/spm_plating_reset")
+async def reset_spm_plating_endpoint(initial_soc: float = 0.80):
+    """Resets the SPMe solid concentration profile and metallic lithium plating counters."""
+    spme_solver_singleton.reset(initial_soc=initial_soc)
+    return {"status": "success", "message": "SPMe electrochemical solver reset successfully"}
+
+
+@app.get("/api/research/drive_cycle_benchmark")
+async def get_drive_cycle_benchmark_endpoint(cycle_name: str = "wltp"):
+    """
+    Executes an on-demand comparative simulation of an 8S1P pack under standard automotive
+    drive cycles (WLTP Class 3b, US06, UDDS, HPPC), evaluating Passive Shunt vs Active ZVS.
+    """
+    name_lower = cycle_name.lower()
+    if "us06" in name_lower:
+        profile = generate_us06_profile(cell_nominal_ah=5.0, dt=1.0)
+    elif "udds" in name_lower:
+        profile = generate_udds_profile(cell_nominal_ah=5.0, dt=1.0)
+    elif "hppc" in name_lower:
+        profile = generate_hppc_pulse_profile(cell_nominal_ah=5.0, dt=0.5)
+    else:
+        profile = generate_wltp_class3_profile(cell_nominal_ah=5.0, dt=1.0)
+
+    num_cells = 8
+    cap_nom = 5.0
+    dt = profile.dt
+    soh = np.array([98.0, 97.5, 98.2, 78.0, 98.5, 97.8, 98.0, 97.9])
+    soc_init = np.array([48.0, 47.5, 48.8, 22.0, 49.0, 47.8, 48.2, 48.0])
+    r0 = 0.024 + (100.0 - soh) * 0.00065
+
+    # Run Passive vs Active
+    runs = {}
+    for is_active in [False, True]:
+        soc = np.copy(soc_init)
+        energy_wh = 0.0
+        heat_loss_wh = 0.0
+        cutoff_idx = len(profile.time_s)
+        v_pack_trace = []
+        v_cell4_trace = []
+
+        for step in range(len(profile.time_s)):
+            i_load = profile.current_a[step]
+            i_cell = np.full(num_cells, i_load)
+            p_loss = 0.0
+
+            if not is_active:
+                min_soc = np.min(soc)
+                for c in range(num_cells):
+                    if soc[c] > min_soc + 2.0:
+                        i_bleed = 0.10
+                        p_loss += i_bleed * (3.00 + 1.18 * (soc[c] / 100.0))
+                        soc[c] -= (i_bleed * dt / (3600.0 * cap_nom * (soh[c] / 100.0))) * 100.0
+            else:
+                weak_idx = int(np.argmin(soc))
+                donors = np.where(soc > np.min(soc) + 2.0)[0]
+                if len(donors) > 0:
+                    i_shuttle = 1.80
+                    eta_zvs = 0.930
+                    i_cell[weak_idx] -= i_shuttle * eta_zvs
+                    i_cell[donors] += i_shuttle / len(donors)
+                    p_loss += (i_shuttle * 3.7) * (1.0 - eta_zvs)
+
+            dsoc = (i_cell * dt / (3600.0 * cap_nom * (soh / 100.0))) * 100.0
+            soc -= dsoc
+            ocv = 3.00 + 1.18 * (soc / 100.0)
+            v_term = ocv - i_cell * r0
+
+            if i_load > 0:
+                energy_wh += np.sum(v_term) * i_load * (dt / 3600.0)
+            heat_loss_wh += p_loss * (dt / 3600.0)
+
+            v_pack_trace.append(float(np.sum(v_term)))
+            v_cell4_trace.append(float(v_term[3]))
+
+            if np.any(v_term <= 3.00) or np.any(soc <= 2.0):
+                cutoff_idx = step
+                break
+
+        key = "active_zvs" if is_active else "passive_shunt"
+        runs[key] = {
+            "runtime_s": cutoff_idx * dt,
+            "usable_energy_wh": round(energy_wh, 2),
+            "heat_loss_wh": round(heat_loss_wh, 2),
+            "stranded_soc_pct": round(float(np.mean(soc[np.arange(num_cells) != 3])), 1),
+            "v_pack_trace": v_pack_trace[::max(1, len(v_pack_trace) // 60)],
+            "v_cell4_trace": v_cell4_trace[::max(1, len(v_cell4_trace) // 60)],
+        }
+
+    gain_pct = round(((runs["active_zvs"]["usable_energy_wh"] - runs["passive_shunt"]["usable_energy_wh"]) / max(1e-3, runs["passive_shunt"]["usable_energy_wh"])) * 100.0, 1)
+    heat_saved_pct = round(((runs["passive_shunt"]["heat_loss_wh"] - runs["active_zvs"]["heat_loss_wh"]) / max(1e-3, runs["passive_shunt"]["heat_loss_wh"])) * 100.0, 1)
+
+    return {
+        "cycle_name": profile.name,
+        "cycle_duration_s": profile.duration_s,
+        "peak_discharge_current_a": profile.peak_discharge_current_a,
+        "energy_gain_pct": gain_pct,
+        "heat_reduction_pct": heat_saved_pct,
+        "passive_shunt": runs["passive_shunt"],
+        "active_zvs": runs["active_zvs"],
+    }
+
+
+@app.get("/api/research/benchmark_summary")
+async def get_benchmark_summary_endpoint():
+    """Returns the persistent empirical results from results/research_benchmark_summary.json."""
+    summary_path = os.path.join(project_root, "results", "research_benchmark_summary.json")
+    if os.path.exists(summary_path):
+        with open(summary_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {"status": "pending", "message": "Run python run_research_benchmarks.py to generate summary"}
 
 
 if __name__ == "__main__":

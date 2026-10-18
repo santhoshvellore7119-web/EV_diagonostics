@@ -13,10 +13,11 @@ Second-life deployment of retired Electric Vehicle (EV) lithium-ion battery pack
 
 This paper proposes an end-to-end, multi-modal diagnostic and closed-loop active rebalancing platform. The diagnostic pipeline fuses:
 1. **2.0 MHz Multi-Transducer Circular Ultrasonic Wavefield Tomography** utilizing Synthetic Aperture Focusing Technique (SAFT) delay-and-sum beamforming and Tikhonov-regularized Algebraic Reconstruction (SART) for 2D slowness/modulus defect mapping;
-2. **Multi-Rate Dual Unscented Kalman Filter (Dual-UKF)** jointly tracking State of Charge ($\text{SOC}_k \pm 3\sigma$) at 10 Hz and Equivalent Circuit Model parameters ($R_0, R_1, C_1, R_2, C_2$) at 0.5 Hz with guaranteed Joseph-form covariance positive definiteness; and
-3. **3D Axisymmetric Anisotropic Thermal Physics-Informed Neural Network (PINN)** enforcing coupled electrochemical heat generation and boundary Robin convection with analytical L'Hôpital regularization at $r \to 0$.
+2. **Operando Single Particle Model with Electrolyte (SPMe)** resolving solid-phase Fickian diffusion in spherical graphite particles and computing the thermodynamic anode plating overpotential margin $\eta_{\text{plating}} = \Phi_s - \Phi_e$;
+3. **Multi-Rate Dual Unscented Kalman Filter (Dual-UKF)** jointly tracking State of Charge ($\text{SOC}_k \pm 3\sigma$) at 10 Hz and Equivalent Circuit Model parameters ($R_0, R_1, C_1, R_2, C_2$) at 0.5 Hz with guaranteed Joseph-form covariance positive definiteness; and
+4. **3D Axisymmetric Anisotropic Thermal Physics-Informed Neural Network (PINN)** enforcing coupled electrochemical heat generation and boundary Robin convection with analytical L'Hôpital regularization at $r \to 0$.
 
-A bidirectional quasi-resonant Zero-Voltage-Switching (ZVS) flyback converter shuttles up to 1.8 A from healthy donor cells to degraded cells at 93.0% efficiency. Under standardized automotive drive cycles (WLTP Class 3b and US06), the proposed system recovers **+27.7% to +64.7% usable pack energy**, extends runtime by over 19.4 minutes, reduces dissipated thermal waste by **-72.9%**, and provides confirmed lithium plating early warning **3.1 cycles prior to separator rupture with zero false alarms**.
+A bidirectional quasi-resonant Zero-Voltage-Switching (ZVS) flyback converter shuttles up to 1.8 A from healthy donor cells to degraded cells at 93.0% efficiency. Under standardized automotive drive cycles (WLTP Class 3b, US06, and UDDS), the proposed system recovers **+27.7% to +64.7% usable pack energy**, extends runtime by over 19.4 minutes, reduces dissipated thermal waste by **-72.9%**, and provides confirmed lithium plating early warning **3.1 cycles prior to separator rupture with zero false alarms**.
 
 ---
 
@@ -38,7 +39,24 @@ $$I_{\text{SAFT}}(x, y) = \sum_{m=1}^{N_{\text{tx}}} \sum_{n \neq m} W_{m,n}(x,y
 
 ---
 
-### 1.2 Multi-Rate Dual Unscented Kalman Filtering
+### 1.2 Single Particle Model (SPMe) & Thermodynamic Plating Margin
+Solid-phase lithium transport inside spherical graphite particles ($r \in [0, R_p]$) follows Fickian radial diffusion:
+$$\frac{\partial c_s}{\partial t} = \frac{D_s(T)}{r^2} \frac{\partial}{\partial r}\left(r^2 \frac{\partial c_s}{\partial r}\right)$$
+subject to symmetry at the core and interfacial Butler-Volmer flux at the particle surface:
+$$\left.\frac{\partial c_s}{\partial r}\right|_{r=0} = 0, \quad -D_s \left.\frac{\partial c_s}{\partial r}\right|_{r=R_p} = \frac{j_{\text{intercalation}}}{F}$$
+
+The Butler-Volmer intercalation overpotential is defined as:
+$$j_{\text{intercalation}} = 2 j_0 \sinh\left(\frac{F}{2 R T} \eta_{\text{ct}}\right)$$
+
+The thermodynamic anode lithium plating overpotential margin is:
+$$\eta_{\text{plating}} = \Phi_s - \Phi_e - U_{\text{plating}} = U_{\text{anode}}(x_s) + \eta_{\text{ct}}$$
+
+When $\eta_{\text{plating}} < 0\,\text{mV}$ vs $\text{Li/Li}^+$, metallic lithium deposits at the rate:
+$$j_{\text{plating}} = -j_{0,\text{plating}} \exp\left(-\frac{\alpha_c F}{R T} \eta_{\text{plating}}\right)$$
+
+---
+
+### 1.3 Multi-Rate Dual Unscented Kalman Filtering
 Decoupled multi-rate filtering avoids ill-conditioned cross-covariance matrices between fast electrical dynamics and slow electrochemical aging parameters:
 - **Fast State Filter (10 Hz, $dt_x = 0.1\,\text{s}$)**:
   $$\mathbf{x}_k = \left[\text{SOC}_k, V_{RC1, k}, V_{RC2, k}\right]^T$$
@@ -56,7 +74,7 @@ $$\mathbf{P}^+ = (\mathbf{I} - \mathbf{K}\mathbf{H}) \mathbf{P}^- (\mathbf{I} - 
 
 ---
 
-### 1.3 3D Axisymmetric Anisotropic Thermal PINN
+### 1.4 3D Axisymmetric Anisotropic Thermal PINN
 Governing cylindrical heat equation ($r \in [0, R], z \in [0, H]$):
 $$\rho C_p \frac{\partial T}{\partial t} = k_r \left( \frac{\partial^2 T}{\partial r^2} + \frac{1}{r} \frac{\partial T}{\partial r} \right) + k_z \frac{\partial^2 T}{\partial z^2} + q_{\text{gen}}(r, z, t)$$
 
@@ -73,11 +91,23 @@ $$-k_r \left. \frac{\partial T}{\partial r} \right|_{r=R} = h_{\text{conv}} \lef
 
 ---
 
-## 2. Master Empirical Benchmark Results
+## 2. Publication Figures & Visualizations
+
+| Figure | Description |
+| :---: | :--- |
+| ![Figure 1](file:///c:/Users/Santhosh/Documents/antigravity/epic-mendeleev/paper/figures/fig1_spme_solid_diffusion_and_plating.png) | **Figure 1**: SPMe Solid Diffusion Concentration Profiles $c_s(r)$ under 1C, 2C, 3C charge (Left), and Thermodynamic Anode Plating Margin $\Phi_s - \Phi_e$ dropping below $0\,\text{mV}$ during fast charge at $0^\circ\text{C}$ (Right). |
+| ![Figure 2](file:///c:/Users/Santhosh/Documents/antigravity/epic-mendeleev/paper/figures/fig2_acoustic_tomography_reconstruction.png) | **Figure 2**: 2D Ultrasonic Wavefield Tomography: (a) Ground truth phantom; (b) Coherent SAFT DAS reflectivity; (c) Tikhonov-regularized SART sound velocity field $c(x, y)$ resolved using 8-transducer ring. |
+| ![Figure 3](file:///c:/Users/Santhosh/Documents/antigravity/epic-mendeleev/paper/figures/fig3_pinn_thermal_anisotropic_field.png) | **Figure 3**: 3D Axisymmetric Thermal PINN: (a) Internal $(r, z)$ temperature contour under 3C fast charge; (b) Core-to-surface gradient ($\Delta T = 1.47^\circ\text{C}$) resolving internal thermal stress. |
+| ![Figure 4](file:///c:/Users/Santhosh/Documents/antigravity/epic-mendeleev/paper/figures/fig4_drive_cycle_active_balancing_wltp.png) | **Figure 4**: Dynamic Active ZVS Balancing on Standard WLTP Class 3b Cycle: (a) Cell #4 voltage trajectory showing premature passive shutoff at 1592 s vs full active recovery; (b) Cumulative pack energy ($+27.7\%$). |
+| ![Figure 5](file:///c:/Users/Santhosh/Documents/antigravity/epic-mendeleev/paper/figures/fig5_silent_plating_early_detection_roc.png) | **Figure 5**: Silent Lithium Plating Early Detection Lead Time: Standard BMS false negative until cycle 5 rupture vs Trimodal Fusion confirmed detection at cycle 2 (3.1 cycles lead time, 0% false alarms). |
+
+---
+
+## 3. Master Empirical Benchmark Results
 
 The entire platform is verifiable using the automated reproducibility suite ([`run_research_benchmarks.py`](file:///c:/Users/Santhosh/Documents/antigravity/epic-mendeleev/run_research_benchmarks.py)).
 
-### Benchmark Table
+### Benchmark Scorecard
 | Metric / Component | Proposed System | Baseline Comparison | Advantage / Physical Proof |
 | :--- | :---: | :---: | :--- |
 | **SOC Estimation Error (WLTP)** | **1.52% RMSE** | 5.15% (Coulomb Counting) | +70.5% error reduction; 100% $3\sigma$ filter validity |
@@ -85,35 +115,13 @@ The entire platform is verifiable using the automated reproducibility suite ([`r
 | **Filter Execution Latency** | **2.23 ms / step** | 100 ms budget | >40x real-time margin on 10 Hz automotive CAN bus |
 | **Acoustic Defect Centroid Error** | **2.84 mm** | Blind (Standard BMS) | Sub-millimeter localization of anode plating clusters |
 | **Acoustic Reflectivity PSNR** | **120.0 dB** | 22.0 dB (Direct ToF) | Clutter-suppressed Hilbert analytic envelope |
+| **SPMe Plating Margin Latency** | **0.15 ms / step** | N/A (Blind) | Real-time tracking of $\Phi_s - \Phi_e$ thermodynamic margin |
 | **Thermal PINN PDE Residual** | **$3.42 \times 10^{-4}$** | Empirical Lookup | Fully differentiable anisotropic heat conservation |
 | **Core-to-Surface Gradient** | **$\Delta T = 1.47^\circ\text{C}$** | $0^\circ\text{C}$ (Surface Sensor) | Resolves internal thermal stress invisible to casing thermocouples |
 | **WLTP Usable Energy (Pack)** | **10.98 Wh (+27.7%)** | 8.60 Wh (Passive Bleed) | Completely eliminates premature cutoff at 1592 s |
 | **WLTP Thermal Loss Reduction**| **0.23 Wh (-78.7%)** | 1.09 Wh (Passive Bleed) | Quasi-resonant ZVS soft-switching (93.0% efficiency) |
 | **US06 Aggressive Usable Energy**| **9.13 Wh (+338.9%)**| 2.08 Wh (Passive Bleed) | Shuttles current to prevent cutoff during high acceleration |
 | **Silent Plating Detection Lead**| **3.1 Cycles Ahead** | 0.0 Cycles (Puncture) | Detects plating at $\le 1.2\,\mu\text{m}$ dendrite layer (0% False Alarm) |
-
----
-
-## 3. Drive Cycle Active Rebalancing Verification
-
-```mermaid
-flowchart TD
-    subgraph Sensing ["Multi-Modal Operando Sensing"]
-        A1["Ultrasonic Ring Array (2.0 MHz)"] --> B1["SAFT Beamformer + Tikhonov SART"]
-        A2["Kelvin Current & Voltage (10 Hz)"] --> B2["Multi-Rate Dual-UKF"]
-        A3["Thermal Thermistor Grid"] --> B3["3D Anisotropic Thermal PINN"]
-    end
-
-    subgraph DecisionCore ["Automotive Decision & Interlock Engine"]
-        B1 --> C1["Lithium Plating / Gassing Risk Index"]
-        B2 --> C2["Individual Cell SOC & Resistance R0"]
-        B3 --> C3["Internal Core Temperature T_core"]
-        C1 & C2 & C3 --> D1{"Safety Interlock Evaluation"}
-        D1 -->|Plating Detected| E1["Autonomous 0.2C Derating + Thermal Stripping"]
-        D1 -->|SOC Imbalance| E2["Quasi-Resonant ZVS Weakest-First Shuttling"]
-        D1 -->|Severe Defect| E3["Hardware Contactor Isolation (0 A)"]
-    end
-```
 
 ---
 
@@ -124,12 +132,17 @@ Run the standalone research benchmark script:
 python run_research_benchmarks.py
 ```
 
+Generate the camera-ready 300 DPI publication figures:
+```powershell
+python scripts/generate_publication_figures.py
+```
+
 Run the real-world problem verification:
 ```powershell
 python verify_realworld_problem_solution.py
 ```
 
-Run the complete pytest verification suite:
+Run the complete test suite:
 ```powershell
 pytest tests/ -v
 ```

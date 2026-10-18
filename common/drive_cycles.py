@@ -250,6 +250,83 @@ def generate_hppc_pulse_profile(
     )
 
 
+def generate_udds_profile(
+    cell_nominal_ah: float = 5.0,
+    dt: float = 1.0,
+    scale_factor: float = 1.0,
+    seed: int = 2026
+) -> DriveCycleProfile:
+    """
+    Generates a 1369-second EPA Urban Dynamometer Driving Schedule (UDDS / FTP-72) profile.
+    Simulates urban city driving with 18 distinct start-stop cycles, moderate accelerations,
+    and extensive idle periods (representing traffic signals). Max speed: 91.2 km/h.
+    """
+    duration = 1369.0
+    time = np.arange(0.0, duration, dt, dtype=np.float64)
+    n_pts = len(time)
+    rng = np.random.default_rng(seed)
+
+    speed = np.zeros(n_pts, dtype=np.float64)
+    for idx, t in enumerate(time):
+        # Piecewise urban stop-go velocity profile with traffic idling
+        cycle_phase = (t % 152.0)
+        if cycle_phase < 25.0:
+            speed[idx] = 0.0  # Idling at red signal
+        elif cycle_phase < 80.0:
+            speed[idx] = 45.0 * np.sin(np.pi * (cycle_phase - 25.0) / 55.0)
+        elif cycle_phase < 100.0:
+            speed[idx] = 0.0  # Brief stop
+        else:
+            speed[idx] = 68.0 * (1.0 - np.cos(2.0 * np.pi * (cycle_phase - 100.0) / 52.0)) * 0.5
+
+    # Highway burst in second half (EPA hill climbing phase)
+    highway_mask = (time >= 505.0) & (time <= 850.0)
+    t_hw = time[highway_mask] - 505.0
+    speed[highway_mask] = np.maximum(speed[highway_mask], 91.2 * np.sin(np.pi * t_hw / 345.0))
+
+    # Add realistic micro-dynamics
+    jitter = gaussian_smooth(rng.normal(0.0, 0.8, n_pts), sigma=2.5)
+    speed = np.clip(speed + np.where(speed > 3.0, jitter, 0.0), 0.0, 91.2)
+
+    v_mps = speed / 3.6
+    accel = np.gradient(v_mps, dt)
+
+    p_aero = 0.5 * 1.225 * 0.29 * 2.2 * (v_mps ** 3) / 1920.0
+    p_roll = 0.012 * 1550.0 * 9.81 * v_mps / 1920.0
+    p_inertial = 1550.0 * v_mps * accel / 1920.0
+    p_aux = 1.3  # Urban electronics/AC load
+
+    p_cell = (p_aero + p_roll + p_inertial + p_aux) * scale_factor
+    current_a = np.zeros(n_pts, dtype=np.float64)
+    v_nominal_cell = 3.70
+
+    for i in range(n_pts):
+        if p_cell[i] >= 0.0:
+            current_a[i] = p_cell[i] / v_nominal_cell
+        else:
+            i_regen = (p_cell[i] * 0.72) / v_nominal_cell
+            current_a[i] = max(-1.8 * cell_nominal_ah, i_regen)
+
+    c_rate = current_a / cell_nominal_ah
+    dt_hours = dt / 3600.0
+    ah_discharged = float(np.sum(current_a[current_a > 0.0]) * dt_hours)
+    ah_regenerated = float(np.sum(np.abs(current_a[current_a < 0.0])) * dt_hours)
+
+    return DriveCycleProfile(
+        name="UDDS_Urban_Dynamometer",
+        duration_s=duration,
+        dt=dt,
+        time_s=time,
+        speed_kmh=speed,
+        current_a=current_a,
+        c_rate=c_rate,
+        total_ah_discharged=ah_discharged,
+        total_ah_regenerated=ah_regenerated,
+        peak_discharge_current_a=float(np.max(current_a)),
+        peak_regen_current_a=float(np.min(current_a)),
+    )
+
+
 def gaussian_smooth(arr: np.ndarray, sigma: float = 2.0) -> np.ndarray:
     """1D Gaussian convolution smoothing kernel."""
     radius = int(np.ceil(3.0 * sigma))

@@ -9,6 +9,7 @@ import AcousticCWIView from './components/views/AcousticCWIView';
 import PackTopologyView from './components/views/PackTopologyView';
 import ResearchDossierModal from './components/views/ResearchDossierModal';
 import AcousticTomographyPINNView from './components/views/AcousticTomographyPINNView';
+import DriveCycleSPMeView from './components/views/DriveCycleSPMeView';
 import ControlPanel from './components/panels/ControlPanel';
 import SOHChart from './components/charts/SOHChart';
 import VoltageChart from './components/charts/VoltageChart';
@@ -16,7 +17,7 @@ import TemperatureChart from './components/charts/TemperatureChart';
 import DegradationChart from './components/charts/DegradationChart';
 import './App.css';
 
-type ActiveTab = 'cockpit' | 'eis_nyquist' | 'acoustic_cwi' | 'tomography_pinn' | 'pack_matrix' | 'three_d' | 'simulink';
+type ActiveTab = 'cockpit' | 'eis_nyquist' | 'acoustic_cwi' | 'tomography_pinn' | 'spme_drive_cycles' | 'pack_matrix' | 'three_d' | 'simulink';
 
 function App() {
   const frame = useSelector((state: RootState) => state.diagnosticFrame.frame);
@@ -97,6 +98,12 @@ function App() {
               className={`nav-pill ${activeTab === 'tomography_pinn' ? 'active' : ''}`}
             >
               TOMOGRAPHY & PINN
+            </button>
+            <button
+              onClick={() => setActiveTab('spme_drive_cycles')}
+              className={`nav-pill ${activeTab === 'spme_drive_cycles' ? 'active' : ''}`}
+            >
+              SPMe & DRIVE CYCLES
             </button>
             <button
               onClick={() => setActiveTab('pack_matrix')}
@@ -259,6 +266,7 @@ function App() {
           {activeTab === 'eis_nyquist' && <EISNyquistView />}
           {activeTab === 'acoustic_cwi' && <AcousticCWIView />}
           {activeTab === 'tomography_pinn' && <AcousticTomographyPINNView />}
+          {activeTab === 'spme_drive_cycles' && <DriveCycleSPMeView />}
           {activeTab === 'pack_matrix' && <PackTopologyView />}
           {activeTab === 'three_d' && <ThreeDView />}
           {activeTab === 'simulink' && <SimulinkView />}
