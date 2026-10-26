@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { RootState } from './store';
 import LiveView from './components/views/LiveView';
@@ -22,7 +22,21 @@ type ActiveTab = 'cockpit' | 'eis_nyquist' | 'acoustic_cwi' | 'tomography_pinn' 
 function App() {
   const frame = useSelector((state: RootState) => state.diagnosticFrame.frame);
   const mode = useSelector((state: RootState) => state.mode.current);
-  const [activeTab, setActiveTab] = useState<ActiveTab>('cockpit');
+  const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
+    const hash = window.location.hash.replace('#', '') as ActiveTab;
+    const validTabs: ActiveTab[] = ['cockpit', 'eis_nyquist', 'acoustic_cwi', 'tomography_pinn', 'spme_drive_cycles', 'pack_matrix', 'three_d', 'simulink'];
+    return validTabs.includes(hash) ? hash : 'cockpit';
+  });
+
+  useEffect(() => {
+    const handleHash = () => {
+      const hash = window.location.hash.replace('#', '') as ActiveTab;
+      const validTabs: ActiveTab[] = ['cockpit', 'eis_nyquist', 'acoustic_cwi', 'tomography_pinn', 'spme_drive_cycles', 'pack_matrix', 'three_d', 'simulink'];
+      if (validTabs.includes(hash)) setActiveTab(hash);
+    };
+    window.addEventListener('hashchange', handleHash);
+    return () => window.removeEventListener('hashchange', handleHash);
+  }, []);
   const [isDossierOpen, setIsDossierOpen] = useState<boolean>(false);
 
   const iBal = frame?.rebalancing_powerStage_actualCurrent || (frame?.rebalancing_active ? 1.5 : 0.0);
