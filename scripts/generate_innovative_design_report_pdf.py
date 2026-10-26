@@ -57,18 +57,14 @@ class APANumberedCanvas(canvas.Canvas):
             self.setStrokeColor(colors.HexColor('#cbd5e1'))
             self.setLineWidth(0.5)
             self.line(54, page_height - 42, page_width - 54, page_height - 42)
-        else:
-            self.setFont('Helvetica', 8)
-            self.setFillColor(colors.HexColor('#475569'))
-            self.drawRightString(page_width - 54, page_height - 36, "1")
 
-        self.setFont('Helvetica', 7.5)
-        self.setFillColor(colors.HexColor('#64748b'))
-        self.drawString(54, 34, "INNOVATIVE DESIGN PROJECT TECHNICAL REPORT — DOCUMENT REF: IDP-2026-EV-DIAG")
-        self.drawRightString(page_width - 54, 34, f"Page {self._pageNumber} of {page_count}")
-        self.setStrokeColor(colors.HexColor('#e2e8f0'))
-        self.setLineWidth(0.5)
-        self.line(54, 44, page_width - 54, 44)
+            self.setFont('Helvetica', 7.5)
+            self.setFillColor(colors.HexColor('#64748b'))
+            self.drawString(54, 34, "INNOVATIVE DESIGN PROJECT TECHNICAL REPORT")
+            self.drawRightString(page_width - 54, 34, f"Page {self._pageNumber} of {page_count}")
+            self.setStrokeColor(colors.HexColor('#e2e8f0'))
+            self.setLineWidth(0.5)
+            self.line(54, 44, page_width - 54, 44)
         
         self.restoreState()
 
@@ -286,44 +282,26 @@ def build_pdf_report(output_pdf_path: str):
     story = []
 
     # =========================================================================
-    # 1. TITLE PAGE
+    # 1. TITLE PAGE (Topic and Innovative Design Project Only)
     # =========================================================================
-    story.append(Spacer(1, 40))
+    story.append(Spacer(1, 180))
     story.append(Paragraph(
         "In-Situ Multi-Modal Cyber-Physical Diagnostics and Quasi-Resonant Active Rebalancing for Secondary Lithium-Ion Energy Storage Systems",
         title_style
     ))
+    story.append(Spacer(1, 24))
     story.append(Paragraph(
-        "An Innovative Design Project Technical Report & Systems Architecture Specification",
-        subtitle_style
+        "Innovative Design Project Report",
+        ParagraphStyle(
+            'MinimalSubtitle',
+            fontName='Helvetica-Bold',
+            fontSize=16,
+            leading=22,
+            alignment=TA_CENTER,
+            textColor=colors.HexColor('#0284c7'),
+            spaceAfter=20
+        )
     ))
-    story.append(Spacer(1, 35))
-    
-    story.append(Paragraph("Advanced Cyber-Physical Energy Storage Systems Laboratory", meta_bold))
-    story.append(Paragraph("Department of Electrical, Electronics, and Automotive Engineering", meta_style))
-    story.append(Paragraph("Project Repository: github.com/santhoshvellore7119-web/EV_diagonostics", meta_style))
-    story.append(Spacer(1, 15))
-    story.append(Paragraph("Project Identifier: <b>IDP-2026-EV-DIAG-V1</b>", meta_style))
-    story.append(Paragraph("Target Publications: <i>IEEE Transactions on Transportation Electrification</i> & <i>Journal of Power Sources</i>", meta_style))
-    story.append(Paragraph("Date of Completion: October 2026", meta_style))
-    story.append(Spacer(1, 45))
-
-    author_note_table = Table(
-        [[Paragraph(
-            "<b>Author Note:</b> This technical report details the innovative design, multi-physics mathematical modeling, embedded signal chain hardware architecture, power electronics active rebalancing circuitry, and experimental verification of the EV Battery Diagnostics & Active Rebalancing Cyber-Physical Platform. All code, neural weights, and verification scripts have been fully reduced to practice, validated against 125 automated unit tests (100% passing), and deployed to the open-source repository. In accordance with project instructions, all PDF binaries have been excluded from version control tracking via .gitignore.",
-            ParagraphStyle('ANText', fontName='Helvetica', fontSize=7.5, leading=10.5, textColor=colors.HexColor('#334155'))
-        )]],
-        colWidths=[504]
-    )
-    author_note_table.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#f8fafc')),
-        ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
-        ('TOPPADDING', (0,0), (-1,-1), 6),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
-        ('LEFTPADDING', (0,0), (-1,-1), 8),
-        ('RIGHTPADDING', (0,0), (-1,-1), 8),
-    ]))
-    story.append(author_note_table)
     story.append(PageBreak())
 
     # =========================================================================
