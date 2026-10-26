@@ -295,7 +295,6 @@ manager = ConnectionManager()
 
 
 # API Endpoints
-@app.get("/")
 @app.get("/api/status")
 async def root():
     return {
@@ -1349,6 +1348,12 @@ async def get_benchmark_summary_endpoint():
     return {"status": "pending", "message": "Run python run_research_benchmarks.py to generate summary"}
 
 
+# Mount production frontend build if available
+frontend_build_dir = os.path.join(project_root, "frontend", "build")
+if os.path.exists(frontend_build_dir):
+    app.mount("/", StaticFiles(directory=frontend_build_dir, html=True), name="frontend")
+
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
