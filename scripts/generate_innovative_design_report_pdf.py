@@ -50,7 +50,7 @@ class APANumberedCanvas(canvas.Canvas):
         if self._pageNumber > 1:
             self.setFont('Helvetica', 8)
             self.setFillColor(colors.HexColor('#475569'))
-            running_head_text = "IN-SITU CYBER-PHYSICAL EV BATTERY DIAGNOSTICS & ACTIVE BALANCING"
+            running_head_text = "EV DIAGNOSTICS & ACTIVE REBALANCING SYSTEMS"
             self.drawString(54, page_height - 36, running_head_text)
             self.drawRightString(page_width - 54, page_height - 36, str(self._pageNumber))
             
@@ -60,7 +60,7 @@ class APANumberedCanvas(canvas.Canvas):
 
             self.setFont('Helvetica', 7.5)
             self.setFillColor(colors.HexColor('#64748b'))
-            self.drawString(54, 34, "INNOVATIVE DESIGN PROJECT TECHNICAL REPORT")
+            self.drawString(54, 34, "EV DIAGNOSTICS & ACTIVE REBALANCING SYSTEMS — INNOVATIVE DESIGN PROJECT")
             self.drawRightString(page_width - 54, 34, f"Page {self._pageNumber} of {page_count}")
             self.setStrokeColor(colors.HexColor('#e2e8f0'))
             self.setLineWidth(0.5)
@@ -284,12 +284,20 @@ def build_pdf_report(output_pdf_path: str):
     # =========================================================================
     # 1. TITLE PAGE (Topic and Innovative Design Project Only)
     # =========================================================================
-    story.append(Spacer(1, 180))
+    story.append(Spacer(1, 220))
     story.append(Paragraph(
-        "In-Situ Multi-Modal Cyber-Physical Diagnostics and Quasi-Resonant Active Rebalancing for Secondary Lithium-Ion Energy Storage Systems",
-        title_style
+        "EV Diagnostics and Active Rebalancing Systems",
+        ParagraphStyle(
+            'MainTopicTitle',
+            fontName='Helvetica-Bold',
+            fontSize=26,
+            leading=32,
+            alignment=TA_CENTER,
+            textColor=colors.HexColor('#0f172a'),
+            spaceAfter=18
+        )
     ))
-    story.append(Spacer(1, 24))
+    story.append(Spacer(1, 14))
     story.append(Paragraph(
         "Innovative Design Project Report",
         ParagraphStyle(
