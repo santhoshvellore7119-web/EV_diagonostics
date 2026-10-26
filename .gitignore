@@ -86,3 +86,6 @@ py#
 __pypackages__#
 scratch/
 .pytest_cache/
+
+# Documentation PDFs
+*.pdf
