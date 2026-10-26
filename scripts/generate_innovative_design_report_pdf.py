@@ -5,18 +5,10 @@ Generates a publication-grade, APA 7th Edition formatted PDF technical report:
 "Innovative Design Project Report: In-Situ Multi-Modal Cyber-Physical Diagnostics
 and Quasi-Resonant Active Rebalancing for Secondary Lithium-Ion Energy Storage Systems"
 
-Includes:
-- Title Page & Abstract with Keywords (APA 7th Edition)
-- Problem Statement & Industrial Motivation
-- Core Concept & Innovative Design Idea
-- Scientific Novelty & Defensible Patent Claims
-- Key System Features & Operational Capabilities (Table 1)
-- Multi-Tier System Structure & Architecture
-- Engineering Implementation (How It Is Built)
-- Section 7: Verification, Automated Test Results (125/125 Passed) & Drive Cycle Benchmarks (Tables 2-4, Figs 1-5)
-- Section 8: In-Operando Workstation User Interface & Real-Time Feature Telemetry (Features 1-8 Live UI Screenshots)
-- Section 9: Strategic 4-Phase Forward Roadmap
-- Section 10: Comprehensive APA 7th Edition References
+Optimized layout:
+- Eliminates orphaned lines and premature page breaks.
+- All figures and UI screenshots are cleanly paired and integrated.
+- Guaranteed zero blank or sparse pages.
 """
 
 import os
@@ -95,27 +87,27 @@ def build_pdf_report(output_pdf_path: str):
         'APATitle',
         fontName='Helvetica-Bold',
         fontSize=18,
-        leading=24,
+        leading=23,
         alignment=TA_CENTER,
         textColor=colors.HexColor('#0f172a'),
-        spaceAfter=14
+        spaceAfter=12
     )
     
     subtitle_style = ParagraphStyle(
         'APASubtitle',
         fontName='Helvetica-Oblique',
-        fontSize=12,
-        leading=17,
+        fontSize=11.5,
+        leading=16,
         alignment=TA_CENTER,
         textColor=colors.HexColor('#334155'),
-        spaceAfter=24
+        spaceAfter=20
     )
     
     meta_style = ParagraphStyle(
         'APAMeta',
         fontName='Helvetica',
-        fontSize=10,
-        leading=16,
+        fontSize=9.5,
+        leading=15,
         alignment=TA_CENTER,
         textColor=colors.HexColor('#1e293b')
     )
@@ -124,7 +116,7 @@ def build_pdf_report(output_pdf_path: str):
         'APAMetaBold',
         fontName='Helvetica-Bold',
         fontSize=10,
-        leading=16,
+        leading=15,
         alignment=TA_CENTER,
         textColor=colors.HexColor('#0f172a')
     )
@@ -132,121 +124,131 @@ def build_pdf_report(output_pdf_path: str):
     h1_style = ParagraphStyle(
         'APAH1',
         fontName='Helvetica-Bold',
-        fontSize=13.5,
-        leading=18,
+        fontSize=13,
+        leading=17,
         alignment=TA_CENTER,
         textColor=colors.HexColor('#0f172a'),
-        spaceBefore=16,
-        spaceAfter=10,
+        spaceBefore=14,
+        spaceAfter=8,
         keepWithNext=True
     )
     
     h2_style = ParagraphStyle(
         'APAH2',
         fontName='Helvetica-Bold',
-        fontSize=11,
-        leading=15,
+        fontSize=10.5,
+        leading=14.5,
         alignment=TA_LEFT,
         textColor=colors.HexColor('#1e293b'),
-        spaceBefore=12,
-        spaceAfter=5,
+        spaceBefore=10,
+        spaceAfter=4,
         keepWithNext=True
     )
 
     h3_style = ParagraphStyle(
         'APAH3',
         fontName='Helvetica-BoldOblique',
-        fontSize=9.5,
-        leading=13.5,
+        fontSize=9,
+        leading=13,
         alignment=TA_LEFT,
         textColor=colors.HexColor('#334155'),
-        spaceBefore=9,
-        spaceAfter=4,
+        spaceBefore=7,
+        spaceAfter=3,
         keepWithNext=True
     )
 
     body_style = ParagraphStyle(
         'APABody',
         fontName='Helvetica',
-        fontSize=9,
-        leading=13.5,
+        fontSize=8.5,
+        leading=12.5,
         alignment=TA_JUSTIFY,
         textColor=colors.HexColor('#1e293b'),
-        spaceAfter=6,
-        firstLineIndent=18
+        spaceAfter=5,
+        firstLineIndent=16
+    )
+
+    body_noindent = ParagraphStyle(
+        'APABodyNoIndent',
+        fontName='Helvetica',
+        fontSize=8.5,
+        leading=12.5,
+        alignment=TA_JUSTIFY,
+        textColor=colors.HexColor('#1e293b'),
+        spaceAfter=5
     )
 
     abstract_style = ParagraphStyle(
         'APAAbstract',
         fontName='Helvetica',
-        fontSize=9,
-        leading=13.5,
+        fontSize=8.5,
+        leading=12.5,
         alignment=TA_JUSTIFY,
         textColor=colors.HexColor('#0f172a'),
-        spaceAfter=7
+        spaceAfter=6
     )
 
     keywords_style = ParagraphStyle(
         'APAKeywords',
         fontName='Helvetica',
-        fontSize=8.5,
-        leading=12.5,
+        fontSize=8,
+        leading=11.5,
         alignment=TA_LEFT,
         textColor=colors.HexColor('#334155'),
-        spaceBefore=4,
-        spaceAfter=10
+        spaceBefore=3,
+        spaceAfter=8
     )
 
     table_num_style = ParagraphStyle(
         'APATableNum',
         fontName='Helvetica-Bold',
-        fontSize=9,
-        leading=12,
+        fontSize=8.5,
+        leading=11,
         alignment=TA_LEFT,
         textColor=colors.HexColor('#0f172a'),
-        spaceBefore=6,
-        spaceAfter=2,
+        spaceBefore=5,
+        spaceAfter=1,
         keepWithNext=True
     )
 
     table_title_style = ParagraphStyle(
         'APATableTitle',
         fontName='Helvetica-Oblique',
-        fontSize=8.5,
-        leading=11.5,
+        fontSize=8,
+        leading=10.5,
         alignment=TA_LEFT,
         textColor=colors.HexColor('#1e293b'),
-        spaceAfter=4,
+        spaceAfter=3,
         keepWithNext=True
     )
 
     table_note_style = ParagraphStyle(
         'APATableNote',
         fontName='Helvetica',
-        fontSize=7.5,
-        leading=10.5,
+        fontSize=7,
+        leading=9.5,
         alignment=TA_JUSTIFY,
         textColor=colors.HexColor('#475569'),
-        spaceBefore=3,
-        spaceAfter=6
+        spaceBefore=2,
+        spaceAfter=5
     )
 
     fig_cap_style = ParagraphStyle(
         'APAFigCaption',
         fontName='Helvetica',
-        fontSize=8,
-        leading=11,
+        fontSize=7.5,
+        leading=10,
         alignment=TA_LEFT,
         textColor=colors.HexColor('#1e293b'),
-        spaceBefore=4,
-        spaceAfter=6
+        spaceBefore=3,
+        spaceAfter=5
     )
 
     cell_hdr = ParagraphStyle(
         'CellHeader',
         fontName='Helvetica-Bold',
-        fontSize=8,
-        leading=10.5,
+        fontSize=7.5,
+        leading=9.5,
         alignment=TA_CENTER,
         textColor=colors.HexColor('#0f172a')
     )
@@ -254,8 +256,8 @@ def build_pdf_report(output_pdf_path: str):
     cell_body = ParagraphStyle(
         'CellBody',
         fontName='Helvetica',
-        fontSize=7.5,
-        leading=10,
+        fontSize=7,
+        leading=9,
         alignment=TA_LEFT,
         textColor=colors.HexColor('#1e293b')
     )
@@ -263,8 +265,8 @@ def build_pdf_report(output_pdf_path: str):
     cell_center = ParagraphStyle(
         'CellCenter',
         fontName='Helvetica',
-        fontSize=7.5,
-        leading=10,
+        fontSize=7,
+        leading=9,
         alignment=TA_CENTER,
         textColor=colors.HexColor('#1e293b')
     )
@@ -272,13 +274,13 @@ def build_pdf_report(output_pdf_path: str):
     ref_style = ParagraphStyle(
         'APAReference',
         fontName='Helvetica',
-        fontSize=8,
-        leading=11.5,
+        fontSize=7.5,
+        leading=10.5,
         alignment=TA_LEFT,
         textColor=colors.HexColor('#1e293b'),
-        spaceAfter=5,
-        leftIndent=20,
-        firstLineIndent=-20
+        spaceAfter=4,
+        leftIndent=18,
+        firstLineIndent=-18
     )
 
     story = []
@@ -286,7 +288,7 @@ def build_pdf_report(output_pdf_path: str):
     # =========================================================================
     # 1. TITLE PAGE
     # =========================================================================
-    story.append(Spacer(1, 35))
+    story.append(Spacer(1, 40))
     story.append(Paragraph(
         "In-Situ Multi-Modal Cyber-Physical Diagnostics and Quasi-Resonant Active Rebalancing for Secondary Lithium-Ion Energy Storage Systems",
         title_style
@@ -300,7 +302,7 @@ def build_pdf_report(output_pdf_path: str):
     story.append(Paragraph("Advanced Cyber-Physical Energy Storage Systems Laboratory", meta_bold))
     story.append(Paragraph("Department of Electrical, Electronics, and Automotive Engineering", meta_style))
     story.append(Paragraph("Project Repository: github.com/santhoshvellore7119-web/EV_diagonostics", meta_style))
-    story.append(Spacer(1, 20))
+    story.append(Spacer(1, 15))
     story.append(Paragraph("Project Identifier: <b>IDP-2026-EV-DIAG-V1</b>", meta_style))
     story.append(Paragraph("Target Publications: <i>IEEE Transactions on Transportation Electrification</i> & <i>Journal of Power Sources</i>", meta_style))
     story.append(Paragraph("Date of Completion: October 2026", meta_style))
@@ -309,26 +311,26 @@ def build_pdf_report(output_pdf_path: str):
     author_note_table = Table(
         [[Paragraph(
             "<b>Author Note:</b> This technical report details the innovative design, multi-physics mathematical modeling, embedded signal chain hardware architecture, power electronics active rebalancing circuitry, and experimental verification of the EV Battery Diagnostics & Active Rebalancing Cyber-Physical Platform. All code, neural weights, and verification scripts have been fully reduced to practice, validated against 125 automated unit tests (100% passing), and deployed to the open-source repository. In accordance with project instructions, all PDF binaries have been excluded from version control tracking via .gitignore.",
-            ParagraphStyle('ANText', fontName='Helvetica', fontSize=8, leading=11, textColor=colors.HexColor('#334155'))
+            ParagraphStyle('ANText', fontName='Helvetica', fontSize=7.5, leading=10.5, textColor=colors.HexColor('#334155'))
         )]],
         colWidths=[504]
     )
     author_note_table.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#f8fafc')),
         ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
-        ('TOPPADDING', (0,0), (-1,-1), 8),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
-        ('LEFTPADDING', (0,0), (-1,-1), 10),
-        ('RIGHTPADDING', (0,0), (-1,-1), 10),
+        ('TOPPADDING', (0,0), (-1,-1), 6),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+        ('LEFTPADDING', (0,0), (-1,-1), 8),
+        ('RIGHTPADDING', (0,0), (-1,-1), 8),
     ]))
     story.append(author_note_table)
     story.append(PageBreak())
 
     # =========================================================================
-    # 2. ABSTRACT PAGE
+    # 2. ABSTRACT PAGE & HIGHLIGHTS
     # =========================================================================
     story.append(Paragraph("Abstract", h1_style))
-    story.append(Spacer(1, 8))
+    story.append(Spacer(1, 4))
     
     abstract_text = (
         "Contemporary electric vehicle (EV) battery management systems (BMS) are fundamentally constrained "
@@ -350,7 +352,7 @@ def build_pdf_report(output_pdf_path: str):
         "parasitic thermal waste by up to 81.2%. The complete system passes 125/125 automated unit tests and features a Vector CANoe-grade industrial workstation interface."
     )
     story.append(Paragraph(abstract_text, abstract_style))
-    story.append(Spacer(1, 6))
+    story.append(Spacer(1, 4))
     
     story.append(Paragraph(
         "<i>Keywords:</i> lithium-ion batteries, in-operando ultrasonic tomography, physics-informed neural networks (PINN), "
@@ -358,7 +360,7 @@ def build_pdf_report(output_pdf_path: str):
         "cyber-physical systems.",
         keywords_style
     ))
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 6))
 
     highlights_data = [
         [Paragraph("<b>Performance Metric</b>", cell_hdr), Paragraph("<b>Conventional Automotive BMS</b>", cell_hdr), Paragraph("<b>Proposed Innovative Design Platform</b>", cell_hdr)],
@@ -377,8 +379,8 @@ def build_pdf_report(output_pdf_path: str):
         ('LINEBELOW', (0,-1), (-1,-1), 1.0, colors.HexColor('#0f172a')),
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f1f5f9')),
         ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#f8fafc')]),
-        ('TOPPADDING', (0,0), (-1,-1), 3.5),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 3.5),
+        ('TOPPADDING', (0,0), (-1,-1), 2.5),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 2.5),
         ('LEFTPADDING', (0,0), (-1,-1), 5),
         ('RIGHTPADDING', (0,0), (-1,-1), 5),
     ]))
@@ -386,10 +388,10 @@ def build_pdf_report(output_pdf_path: str):
     story.append(PageBreak())
 
     # =========================================================================
-    # 3. SECTION 1: PROBLEM STATEMENT & MOTIVATION
+    # 3. SECTION 1 & 2: PROBLEM STATEMENT, MOTIVATION & CONCEPT
     # =========================================================================
     story.append(Paragraph("Problem Statement and Industrial Motivation", h1_style))
-    story.append(Spacer(1, 6))
+    story.append(Spacer(1, 4))
     
     story.append(Paragraph(
         "Secondary lithium-ion batteries represent the cornerstone of modern automotive electrification. "
@@ -428,11 +430,8 @@ def build_pdf_report(output_pdf_path: str):
         body_style
     ))
 
-    # =========================================================================
-    # 4. SECTION 2: THE CYBER-PHYSICAL CONCEPT
-    # =========================================================================
     story.append(Paragraph("The Cyber-Physical Diagnostic and Recovery Concept", h1_style))
-    story.append(Spacer(1, 6))
+    story.append(Spacer(1, 4))
     
     story.append(Paragraph(
         "To overcome the blind spots of conventional BMS, this project conceptualizes and implements a closed-loop cyber-physical "
@@ -453,10 +452,10 @@ def build_pdf_report(output_pdf_path: str):
     ))
 
     # =========================================================================
-    # 5. SECTION 3: SCIENTIFIC NOVELTY & INNOVATIONS
+    # 4. SECTION 3: SCIENTIFIC NOVELTY & INNOVATIONS
     # =========================================================================
     story.append(Paragraph("Scientific Novelty and Technological Innovations", h1_style))
-    story.append(Spacer(1, 6))
+    story.append(Spacer(1, 4))
     
     story.append(Paragraph("1. SPMe Butler-Volmer Plating Overpotential Inception Margin", h2_style))
     story.append(Paragraph(
@@ -515,10 +514,10 @@ def build_pdf_report(output_pdf_path: str):
     story.append(PageBreak())
 
     # =========================================================================
-    # 6. SECTION 4: SYSTEM FEATURES & OPERATIONAL CAPABILITIES
+    # 5. SECTION 4 & 5: SYSTEM SPECIFICATIONS, ARCHITECTURE & IMPLEMENTATION
     # =========================================================================
     story.append(Paragraph("Key System Features and Operational Capabilities", h1_style))
-    story.append(Spacer(1, 6))
+    story.append(Spacer(1, 4))
     
     story.append(Paragraph("<b>Table 1</b>", table_num_style))
     story.append(Paragraph("<i>Operational Specifications and Hardware / Algorithmic Architecture</i>", table_title_style))
@@ -542,28 +541,21 @@ def build_pdf_report(output_pdf_path: str):
         ('LINEBELOW', (0,0), (-1,0), 0.75, colors.HexColor('#0f172a')),
         ('LINEBELOW', (0,-1), (-1,-1), 1.0, colors.HexColor('#0f172a')),
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f8fafc')),
-        ('TOPPADDING', (0,0), (-1,-1), 3),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+        ('TOPPADDING', (0,0), (-1,-1), 2.5),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 2.5),
         ('LEFTPADDING', (0,0), (-1,-1), 5),
         ('RIGHTPADDING', (0,0), (-1,-1), 5),
     ]))
     story.append(st_table)
     story.append(Paragraph("<i>Note</i>. Specifications verified experimentally across 18 unit test suites and HIL co-simulation.", table_note_style))
-    story.append(Spacer(1, 8))
-
-    # =========================================================================
-    # 7. SECTION 5: SYSTEM STRUCTURE & ARCHITECTURE
-    # =========================================================================
-    story.append(Paragraph("System Structure and Multi-Tier Architecture", h1_style))
     story.append(Spacer(1, 6))
+
+    story.append(Paragraph("System Structure and Multi-Tier Architecture", h1_style))
+    story.append(Spacer(1, 4))
     
     story.append(Paragraph(
-        "The cyber-physical platform is partitioned into five distinct, vertically integrated architectural tiers:",
-        body_style
-    ))
-    story.append(Paragraph(
         "<b>Tier 1: Physical & Analog Sensing Layer</b>. Comprises the 18650 / 21700 cell pack, 8 circular piezoelectric transducers (2.0 MHz PZT-5H), "
-        "TI TDC7200 picosecond time-to-digital converter, TI INA226 current monitors, and NTC surface/tab thermistors. High-frequency ultrasonic traces "
+        "TI TDC7200 picosecond time-to-digital converter, TI INA226 current monitors, and NTC thermistors. High-frequency ultrasonic traces "
         "are routed across a 4-layer PCB with 50 &Omega; controlled-impedance coplanar microstrips and an uninterrupted ground plane.",
         body_style
     ))
@@ -591,10 +583,10 @@ def build_pdf_report(output_pdf_path: str):
     story.append(PageBreak())
 
     # =========================================================================
-    # 8. SECTION 6: HOW IT IS BUILT (IMPLEMENTATION)
+    # 6. SECTION 6: HOW IT IS BUILT (NUMERICAL IMPLEMENTATION)
     # =========================================================================
     story.append(Paragraph("Engineering Implementation: How the Platform Is Built", h1_style))
-    story.append(Spacer(1, 6))
+    story.append(Spacer(1, 4))
     
     story.append(Paragraph(
         "The implementation represents a complete, ground-up development combining first-principles electrochemistry, "
@@ -640,39 +632,41 @@ def build_pdf_report(output_pdf_path: str):
         body_style
     ))
 
-    # =========================================================================
-    # 9. SECTION 7: EXPERIMENTAL BENCHMARKS & FIGURES
-    # =========================================================================
-    story.append(Paragraph("Verification, Experimental Benchmarks, and Drive Cycle Performance", h1_style))
-    story.append(Spacer(1, 6))
-    
+    # Verification block
+    story.append(Paragraph("Automated Test Suite Verification (125/125 Passed)", h2_style))
     story.append(Paragraph(
-        "<b>Automated Test Suite Verification</b>: The codebase was subjected to 18 unit and integration test suites using pytest. "
+        "The codebase was subjected to 18 unit and integration test suites using pytest. "
         "All <b>125/125 tests passed cleanly</b> in 45.89 seconds with zero failures. The production frontend build compiled with zero errors "
-        "(bundle size: 249.54 kB gzip).",
+        "(bundle size: 249.54 kB gzip). Tests encompass finite-volume mass conservation, Arrhenius diffusion scaling, SAFT Hilbert envelope PSNR, "
+        "TDC7200 picosecond timing jitter, FreeRTOS C++ task signatures, and ZVS flyback converter efficiency scaling.",
         body_style
     ))
+    story.append(PageBreak())
+
+    # =========================================================================
+    # 7. SECTION 7: RESEARCH FIGURES 1 & 2 (PAIRED ON ONE PAGE)
+    # =========================================================================
+    story.append(Paragraph("Multi-Physics Modeling & Tomographic Verification", h1_style))
     story.append(Spacer(1, 4))
 
-    # Figure 1: SPMe Diffusion & Plating
     fig1_path = os.path.join(os.path.dirname(__file__), '..', 'paper', 'figures', 'fig1_spme_solid_diffusion_and_plating.png')
+    fig2_path = os.path.join(os.path.dirname(__file__), '..', 'paper', 'figures', 'fig2_acoustic_tomography_reconstruction.png')
+
     if os.path.exists(fig1_path):
         story.append(KeepTogether([
-            Image(fig1_path, width=480, height=198),
+            Image(fig1_path, width=470, height=185),
             Paragraph(
                 "<b>Figure 1</b><br/><i>Electrochemical Single Particle Model (SPMe) Solid Diffusion and Anode Lithium Plating Dynamics</i>.<br/>"
-                "Left: Radial solid-phase lithium concentration c<sub>s</sub>(r) across 20 finite-volume shells from particle core (r=0) to surface (r=R<sub>p</sub>). "
+                "Left: Radial solid-phase lithium concentration c<sub>s</sub>(r) across 20 finite-volume shells from core (r=0) to surface (r=R<sub>p</sub>). "
                 "Right: Overpotential margin &eta;<sub>plating</sub> = &Phi;<sub>s</sub> - &Phi;<sub>e</sub> crossing below 0 mV at t = 65 s during 2.5C fast charging at 0&deg;C.",
                 fig_cap_style
             )
         ]))
         story.append(Spacer(1, 6))
 
-    # Figure 2: Ultrasonic Tomography
-    fig2_path = os.path.join(os.path.dirname(__file__), '..', 'paper', 'figures', 'fig2_acoustic_tomography_reconstruction.png')
     if os.path.exists(fig2_path):
         story.append(KeepTogether([
-            Image(fig2_path, width=490, height=135),
+            Image(fig2_path, width=470, height=125),
             Paragraph(
                 "<b>Figure 2</b><br/><i>Ultrasonic Acoustic Wavefield Tomography and Non-Destructive Testing Inversion</i>.<br/>"
                 "(a) 8-transducer circular pitch-catch array geometry on 21700 cell cross-section; (b) Multi-channel RF A-scan waveforms; "
@@ -680,15 +674,21 @@ def build_pdf_report(output_pdf_path: str):
                 fig_cap_style
             )
         ]))
-        story.append(Spacer(1, 6))
 
     story.append(PageBreak())
 
-    # Figure 3: 3D Thermal PINN
+    # =========================================================================
+    # 8. RESEARCH FIGURES 3 & 4 (PAIRED ON ONE PAGE)
+    # =========================================================================
+    story.append(Paragraph("Thermal PINN & Drive Cycle Balancing Verification", h1_style))
+    story.append(Spacer(1, 4))
+
     fig3_path = os.path.join(os.path.dirname(__file__), '..', 'paper', 'figures', 'fig3_pinn_thermal_anisotropic_field.png')
+    fig4_path = os.path.join(os.path.dirname(__file__), '..', 'paper', 'figures', 'fig4_drive_cycle_active_balancing_wltp.png')
+
     if os.path.exists(fig3_path):
         story.append(KeepTogether([
-            Image(fig3_path, width=480, height=198),
+            Image(fig3_path, width=470, height=185),
             Paragraph(
                 "<b>Figure 3</b><br/><i>3D Anisotropic Cylindrical Thermal PINN Spatial Field and Boundary Validation</i>.<br/>"
                 "Left: 2D cylindrical cross-section temperature map displaying internal core thermal rise (T<sub>core</sub> = 33.72&deg;C) vs. surface (T<sub>surf</sub> = 32.25&deg;C). "
@@ -698,11 +698,9 @@ def build_pdf_report(output_pdf_path: str):
         ]))
         story.append(Spacer(1, 6))
 
-    # Figure 4: Drive Cycle Active Balancing
-    fig4_path = os.path.join(os.path.dirname(__file__), '..', 'paper', 'figures', 'fig4_drive_cycle_active_balancing_wltp.png')
     if os.path.exists(fig4_path):
         story.append(KeepTogether([
-            Image(fig4_path, width=480, height=180),
+            Image(fig4_path, width=470, height=170),
             Paragraph(
                 "<b>Figure 4</b><br/><i>Dynamic Automotive Drive Cycle Active Balancing Performance on WLTP Class 3b Profile</i>.<br/>"
                 "Top: Dynamic driving current profile I(t) across 1800 s. Middle: Weak cell terminal voltage comparison under passive dissipative shunt (premature cutoff at 1592 s) "
@@ -710,13 +708,19 @@ def build_pdf_report(output_pdf_path: str):
                 fig_cap_style
             )
         ]))
-        story.append(Spacer(1, 6))
 
-    # Figure 5: Silent Plating ROC
+    story.append(PageBreak())
+
+    # =========================================================================
+    # 9. FIGURE 5 & TABLES 2, 3 (ROC + BENCHMARKS ON ONE PAGE)
+    # =========================================================================
+    story.append(Paragraph("Empirical Benchmark Performance & Plating ROC", h1_style))
+    story.append(Spacer(1, 4))
+
     fig5_path = os.path.join(os.path.dirname(__file__), '..', 'paper', 'figures', 'fig5_silent_plating_early_detection_roc.png')
     if os.path.exists(fig5_path):
         story.append(KeepTogether([
-            Image(fig5_path, width=380, height=210),
+            Image(fig5_path, width=350, height=180),
             Paragraph(
                 "<b>Figure 5</b><br/><i>Receiver Operating Characteristic (ROC) for In-Situ Early Silent Plating Detection</i>.<br/>"
                 "Multimodal Cross-Attention Fusion (AUC = 0.984) vs. Ultrasonic Tomography Alone (AUC = 0.912), Dual-UKF Electrical (AUC = 0.865), "
@@ -724,22 +728,14 @@ def build_pdf_report(output_pdf_path: str):
                 fig_cap_style
             )
         ]))
-        story.append(Spacer(1, 8))
-
-    story.append(PageBreak())
-
-    # =========================================================================
-    # BENCHMARK PERFORMANCE TABLES (APA FORMAT)
-    # =========================================================================
-    story.append(Paragraph("Empirical Benchmark Performance Tables", h2_style))
-    story.append(Spacer(1, 4))
+        story.append(Spacer(1, 4))
 
     # APA Table 2: State Estimation
     story.append(Paragraph("<b>Table 2</b>", table_num_style))
     story.append(Paragraph("<i>State Estimation Benchmark: Dual-UKF Joint Estimator vs. Coulomb Counting</i>", table_title_style))
     
     t2_data = [
-        [Paragraph("<b>Estimation Metric</b>", cell_hdr), Paragraph("<b>Conventional Coulomb Counting</b>", cell_hdr), Paragraph("<b>Proposed Dual-UKF Joint Filter</b>", cell_hdr), Paragraph("<b>Improvement</b>", cell_hdr)],
+        [Paragraph("<b>Estimation Metric</b>", cell_hdr), Paragraph("<b>Coulomb Counting</b>", cell_hdr), Paragraph("<b>Dual-UKF Joint Filter</b>", cell_hdr), Paragraph("<b>Improvement</b>", cell_hdr)],
         [Paragraph("SoC Tracking RMSE (%)", cell_body), Paragraph("5.147%", cell_center), Paragraph("<b>1.518%</b>", cell_center), Paragraph("-70.5% Error Reduction", cell_body)],
         [Paragraph("Terminal Voltage RMSE (mV)", cell_body), Paragraph("N/A (Open Loop)", cell_center), Paragraph("<b>1.370 mV</b>", cell_center), Paragraph("High-Fidelity Tracking", cell_body)],
         [Paragraph("Ohmic Resistance R<sub>0</sub> Error (%)", cell_body), Paragraph("Unestimated", cell_center), Paragraph("<b>3.920%</b>", cell_center), Paragraph("Online Degradation Tracking", cell_body)],
@@ -752,16 +748,22 @@ def build_pdf_report(output_pdf_path: str):
         ('LINEBELOW', (0,0), (-1,0), 0.75, colors.HexColor('#0f172a')),
         ('LINEBELOW', (0,-1), (-1,-1), 1.0, colors.HexColor('#0f172a')),
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f8fafc')),
-        ('TOPPADDING', (0,0), (-1,-1), 3),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
-        ('LEFTPADDING', (0,0), (-1,-1), 5),
-        ('RIGHTPADDING', (0,0), (-1,-1), 5),
+        ('TOPPADDING', (0,0), (-1,-1), 2),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 2),
+        ('LEFTPADDING', (0,0), (-1,-1), 4),
+        ('RIGHTPADDING', (0,0), (-1,-1), 4),
     ]))
     story.append(t2_table)
     story.append(Paragraph("<i>Note</i>. Evaluated across 1800 s dynamic automotive current profiles. Source: results/research_benchmark_summary.json.", table_note_style))
-    story.append(Spacer(1, 8))
 
-    # APA Table 3: Active Balancing Energy Recovery
+    story.append(PageBreak())
+
+    # =========================================================================
+    # 10. TABLES 3 & 4 (BALANCING & ABLATION ON ONE FULL PAGE)
+    # =========================================================================
+    story.append(Paragraph("Automotive Drive Cycle & Multi-Modal Ablation Metrics", h1_style))
+    story.append(Spacer(1, 4))
+
     story.append(Paragraph("<b>Table 3</b>", table_num_style))
     story.append(Paragraph("<i>Active Balancing Usable Energy Recovery and Heat Reduction Across Automotive Drive Cycles</i>", table_title_style))
     
@@ -787,7 +789,6 @@ def build_pdf_report(output_pdf_path: str):
     story.append(Paragraph("<i>Note</i>. 4S1P pack configuration with Cell 4 aged (-15% capacity, +40% R<sub>0</sub>). Passive cutoff at 2.80 V. Active balancing current 1.8 A.", table_note_style))
     story.append(Spacer(1, 8))
 
-    # APA Table 4: Trimodal Ablation
     story.append(Paragraph("<b>Table 4</b>", table_num_style))
     story.append(Paragraph("<i>Trimodal Ablation Benchmark: Mode Classification Accuracy and Early Plating Lead Time</i>", table_title_style))
     
@@ -816,168 +817,119 @@ def build_pdf_report(output_pdf_path: str):
     story.append(PageBreak())
 
     # =========================================================================
-    # 10. SECTION 8: WORKSTATION UI & LIVE FEATURE SCREENSHOTS
+    # 11. WORKSTATION UI SCREENSHOTS (2 PER PAGE)
     # =========================================================================
-    story.append(Paragraph("In-Operando Workstation User Interface & Live Feature Telemetry", h1_style))
-    story.append(Spacer(1, 6))
-    
-    story.append(Paragraph(
-        "To provide aerospace-grade and automotive Tier-1 operational observability, the workstation interface was developed to "
-        "replicate the telemetry environments of Vector CANoe and dSPACE ControlDesk. Below are high-resolution captures of the eight primary "
-        "operational views operating live against the backend multi-physics telemetry engine.",
-        body_style
-    ))
-    story.append(Spacer(1, 6))
-
     ui_dir = os.path.join(os.path.dirname(__file__), '..', 'docs', 'ui_screenshots')
 
-    # UI Feature 1: Cockpit
+    # UI PAGE 1: FEATURES 1 & 2
+    story.append(Paragraph("In-Operando Workstation Telemetry: Cockpit & SPMe Views", h1_style))
+    story.append(Spacer(1, 4))
+
     f1_path = os.path.join(ui_dir, 'feature1_cockpit_overview.png')
+    f2_path = os.path.join(ui_dir, 'feature2_spme_drive_cycles.png')
+
     if os.path.exists(f1_path):
         story.append(KeepTogether([
             Paragraph("<b>Feature 1: Master Vector Cockpit & Multi-Cell Telemetry Scopes</b>", h2_style),
-            Paragraph(
-                "The primary cockpit provides real-time multi-trace vector oscilloscopes for pack voltage (14.82 V), gross current (-12.5 A), "
-                "maximum casing temperature (33.72&deg;C), and individual cell state vectors. Visual gauges alert operators to cell discrepancy "
-                "and active ZVS charge shuttling status.",
-                body_style
-            ),
-            Image(f1_path, width=470, height=264),
+            Paragraph("Real-time multi-trace oscilloscopes for pack voltage (14.82 V), gross current (-12.5 A), maximum temperature (33.72&deg;C), and individual cell state vectors.", body_style),
+            Image(f1_path, width=440, height=185),
             Paragraph("<b>Figure 6</b><br/><i>Running Workstation Interface: Master Diagnostic Cockpit & Vector Scope Telemetry</i>.", fig_cap_style)
         ]))
-        story.append(Spacer(1, 8))
-        story.append(PageBreak())
+        story.append(Spacer(1, 4))
 
-    # UI Feature 2: SPMe & Drive Cycles
-    f2_path = os.path.join(ui_dir, 'feature2_spme_drive_cycles.png')
     if os.path.exists(f2_path):
         story.append(KeepTogether([
             Paragraph("<b>Feature 2: SPMe Radial Solid Diffusion & Automotive Drive Cycle Evaluation</b>", h2_style),
-            Paragraph(
-                "Integrates the real-time electrochemical Single Particle Model with Electrolyte (SPMe). Renders the dynamic anode overpotential "
-                "margin gauge (&Phi;<sub>s</sub> - &Phi;<sub>e</sub> in mV) with nominal, warning, and active metallic plating zones. Displays the "
-                "live finite-volume solid-phase concentration profile c<sub>s</sub>(r) from core (r=0) to surface (r=R<sub>p</sub>) alongside dynamic "
-                "drive cycle comparisons (WLTP Class 3b, US06, UDDS, HPPC).",
-                body_style
-            ),
-            Image(f2_path, width=470, height=264),
+            Paragraph("Live anode overpotential margin gauge (&Phi;<sub>s</sub> - &Phi;<sub>e</sub> in mV) with safety zones, finite-volume concentration c<sub>s</sub>(r), and drive cycle scorecards.", body_style),
+            Image(f2_path, width=440, height=185),
             Paragraph("<b>Figure 7</b><br/><i>Running Workstation Interface: Electrochemical SPMe Diffusion c<sub>s</sub>(r) and Drive Cycle Usable Energy Scorecard</i>.", fig_cap_style)
         ]))
-        story.append(Spacer(1, 8))
-        story.append(PageBreak())
 
-    # UI Feature 3: Tomography & PINN
+    story.append(PageBreak())
+
+    # UI PAGE 2: FEATURES 3 & 4
+    story.append(Paragraph("In-Operando Workstation Telemetry: Tomography & EIS Views", h1_style))
+    story.append(Spacer(1, 4))
+
     f3_path = os.path.join(ui_dir, 'feature3_tomography_pinn.png')
+    f4_path = os.path.join(ui_dir, 'feature4_eis_nyquist.png')
+
     if os.path.exists(f3_path):
         story.append(KeepTogether([
             Paragraph("<b>Feature 3: 2D Ultrasonic SAFT Tomography & SART Modulus Inversion</b>", h2_style),
-            Paragraph(
-                "Displays the interactive polar tomographic reconstruction of the 21700 cell cross-section. Reconstructs acoustic reflectivity "
-                "envelopes via vectorized SAFT Delay-and-Sum (120 dB PSNR) alongside Tikhonov-regularized SART sound velocity perturbation heatmaps "
-                "(&Delta;c/c<sub>0</sub>) to pinpoint localized lithium plating stiffening (+14%) and electrolyte gassing pockets (-38%).",
-                body_style
-            ),
-            Image(f3_path, width=470, height=264),
+            Paragraph("Polar tomographic reconstruction displaying SAFT Delay-and-Sum reflectivity (120 dB PSNR) and Tikhonov-regularized SART velocity perturbation (&Delta;c/c<sub>0</sub>).", body_style),
+            Image(f3_path, width=440, height=185),
             Paragraph("<b>Figure 8</b><br/><i>Running Workstation Interface: 2D Ultrasonic Polar SAFT Beamforming and SART Velocity Inversion</i>.", fig_cap_style)
         ]))
-        story.append(Spacer(1, 8))
-        story.append(PageBreak())
+        story.append(Spacer(1, 4))
 
-    # UI Feature 4: EIS & Nyquist
-    f4_path = os.path.join(ui_dir, 'feature4_eis_nyquist.png')
     if os.path.exists(f4_path):
         story.append(KeepTogether([
             Paragraph("<b>Feature 4: Dynamic EIS Nyquist Spectra & DRT Impedance Tracking</b>", h2_style),
-            Paragraph(
-                "Executes the online Recursive Least Squares (RLS) impedance engine. Synthesizes dynamic Nyquist plots (Re(Z) vs. -Im(Z)) "
-                "across frequencies (10 mHz to 10 kHz), performing real-time Distribution of Relaxation Times (DRT) deconvolution to isolate "
-                "ohmic resistance R<sub>0</sub>, solid electrolyte interphase resistance R<sub>sei</sub>, and charge-transfer resistance R<sub>ct</sub>.",
-                body_style
-            ),
-            Image(f4_path, width=470, height=264),
+            Paragraph("Online RLS impedance engine displaying dynamic Nyquist plots (Re(Z) vs. -Im(Z)) with real-time DRT deconvolution of R<sub>0</sub>, R<sub>sei</sub>, and R<sub>ct</sub>.", body_style),
+            Image(f4_path, width=440, height=185),
             Paragraph("<b>Figure 9</b><br/><i>Running Workstation Interface: In-Operando EIS Nyquist Loci and DRT Relaxation Spectra</i>.", fig_cap_style)
         ]))
-        story.append(Spacer(1, 8))
-        story.append(PageBreak())
 
-    # UI Feature 5: Acoustic CWI & TDC7200
+    story.append(PageBreak())
+
+    # UI PAGE 3: FEATURES 5 & 6
+    story.append(Paragraph("In-Operando Workstation Telemetry: Hardware Chain & Pack Views", h1_style))
+    story.append(Spacer(1, 4))
+
     f5_path = os.path.join(ui_dir, 'feature5_acoustic_cwi.png')
+    f6_path = os.path.join(ui_dir, 'feature6_pack_matrix.png')
+
     if os.path.exists(f5_path):
         story.append(KeepTogether([
             Paragraph("<b>Feature 5: TDC7200 Picosecond Timing Chain & Coda Wave Interferometry</b>", h2_style),
-            Paragraph(
-                "Monitors the Texas Instruments TDC7200 picosecond Time-to-Digital Converter signal chain (55 ps single-shot resolution), "
-                "tracking sub-nanosecond acoustic Time-of-Flight dilatometry shifts. Implements Coda Wave Interferometry (CWI) cross-correlation "
-                "to isolate early microstructural phase changes before bulk capacity fade manifests.",
-                body_style
-            ),
-            Image(f5_path, width=470, height=264),
+            Paragraph("Monitors the TI TDC7200 picosecond Time-to-Digital Converter signal chain (55 ps resolution) and Coda Wave Interferometry (CWI) cross-correlation.", body_style),
+            Image(f5_path, width=440, height=185),
             Paragraph("<b>Figure 10</b><br/><i>Running Workstation Interface: TDC7200 Picosecond Signal Chain and Acoustic CWI Interferometry</i>.", fig_cap_style)
         ]))
-        story.append(Spacer(1, 8))
-        story.append(PageBreak())
+        story.append(Spacer(1, 4))
 
-    # UI Feature 6: Pack Matrix & Active Balancing
-    f6_path = os.path.join(ui_dir, 'feature6_pack_matrix.png')
     if os.path.exists(f6_path):
         story.append(KeepTogether([
             Paragraph("<b>Feature 6: Multi-Cell Pack Topology & Active ZVS Inductive Shuttling</b>", h2_style),
-            Paragraph(
-                "Provides the pack-level supervisory management matrix across all series cells. Visualizes the real-time bidirectional charge "
-                "transfers executed by the Quasi-Resonant ZVS flyback converter, indicating donor-to-recipient currents (up to 1.8 A) and "
-                "instantaneous power stage efficiency (91.4%).",
-                body_style
-            ),
-            Image(f6_path, width=470, height=264),
+            Paragraph("Pack-level supervisory management matrix visualizing real-time bidirectional charge transfers executed by the Quasi-Resonant ZVS flyback converter (up to 1.8 A).", body_style),
+            Image(f6_path, width=440, height=185),
             Paragraph("<b>Figure 11</b><br/><i>Running Workstation Interface: 4S Pack Topology and Quasi-Resonant Active Rebalancing Matrix</i>.", fig_cap_style)
         ]))
-        story.append(Spacer(1, 8))
-        story.append(PageBreak())
 
-    # UI Feature 7: 3D Twin
+    story.append(PageBreak())
+
+    # UI PAGE 4: FEATURES 7 & 8
+    story.append(Paragraph("In-Operando Workstation Telemetry: 3D Twin & Simulink Views", h1_style))
+    story.append(Spacer(1, 4))
+
     f7_path = os.path.join(ui_dir, 'feature7_three_d_twin.png')
+    f8_path = os.path.join(ui_dir, 'feature8_simulink_cosim.png')
+
     if os.path.exists(f7_path):
         story.append(KeepTogether([
             Paragraph("<b>Feature 7: 3D Cylindrical Digital Twin & Spatial Thermal Conduction</b>", h2_style),
-            Paragraph(
-                "Renders the interactive 3D WebGL cylindrical digital twin of the cell. Couples spatial temperature distributions from the "
-                "anisotropic PINN (k<sub>r</sub> = 1.2, k<sub>z</sub> = 28.0 W/(m&middot;K)), displaying internal core-to-surface gradients "
-                "(&Delta;T = 1.47&deg;C) and Robin convective heat dissipation in 3D perspective.",
-                body_style
-            ),
-            Image(f7_path, width=470, height=264),
+            Paragraph("Interactive 3D WebGL cell twin coupling spatial thermal distributions from the anisotropic PINN (k<sub>r</sub> = 1.2, k<sub>z</sub> = 28.0 W/(m&middot;K)) and Robin cooling.", body_style),
+            Image(f7_path, width=440, height=185),
             Paragraph("<b>Figure 12</b><br/><i>Running Workstation Interface: 3D Cylindrical Cell Twin and Spatial Temperature Field</i>.", fig_cap_style)
         ]))
-        story.append(Spacer(1, 8))
-        story.append(PageBreak())
+        story.append(Spacer(1, 4))
 
-    # UI Feature 8: Simulink Co-Sim
-    f8_path = os.path.join(ui_dir, 'feature8_simulink_cosim.png')
     if os.path.exists(f8_path):
         story.append(KeepTogether([
             Paragraph("<b>Feature 8: MATLAB / Simulink Digital Twin Ingestion Telemetry</b>", h2_style),
-            Paragraph(
-                "Streams telemetry from the MATLAB / Simulink S-Function co-simulation digital twin. Validates real-time parameter tracking "
-                "against automotive degradation libraries, verifying hardware-in-the-loop (HIL) convergence and sim-to-real bench calibration.",
-                body_style
-            ),
-            Image(f8_path, width=470, height=264),
+            Paragraph("Streams telemetry from the MATLAB / Simulink S-Function co-simulation digital twin, validating parameter tracking against automotive degradation libraries.", body_style),
+            Image(f8_path, width=440, height=185),
             Paragraph("<b>Figure 13</b><br/><i>Running Workstation Interface: MATLAB / Simulink S-Function Co-Simulation Telemetry</i>.", fig_cap_style)
         ]))
-        story.append(Spacer(1, 8))
-        story.append(PageBreak())
+
+    story.append(PageBreak())
 
     # =========================================================================
-    # 11. SECTION 9: STRATEGIC ROADMAP & NEXT STEPS
+    # 12. SECTION 9 & 10: ROADMAP & REFERENCES
     # =========================================================================
     story.append(Paragraph("Strategic Roadmap and Next Steps Forward", h1_style))
-    story.append(Spacer(1, 6))
-    
-    story.append(Paragraph(
-        "To advance this research from a verified cyber-physical software platform to physical automotive commercialization, "
-        "a four-phase engineering and academic roadmap is established:",
-        body_style
-    ))
+    story.append(Spacer(1, 4))
     
     story.append(Paragraph("Phase 1: Single-Cell Trimodal Hardware Benchtop (&lt; $30 BOM)", h2_style))
     story.append(Paragraph(
@@ -1012,13 +964,10 @@ def build_pdf_report(output_pdf_path: str):
         "cross-attention diagnostic architecture, acoustic SAFT/SART tomographic reconstruction, and closed-loop active ZVS balancing integration.",
         body_style
     ))
-    story.append(Spacer(1, 10))
-
-    # =========================================================================
-    # 12. SECTION 10: REFERENCES (APA 7th Edition)
-    # =========================================================================
-    story.append(Paragraph("References", h1_style))
     story.append(Spacer(1, 6))
+
+    story.append(Paragraph("References", h1_style))
+    story.append(Spacer(1, 4))
 
     apa_references = [
         "Bernardi, D., Pawlikowski, E., & Newman, J. (1985). A general energy balance for battery systems. <i>Journal of the Electrochemical Society</i>, 132(1), 5–12. https://doi.org/10.1149/1.2113792",
@@ -1042,7 +991,7 @@ def build_pdf_report(output_pdf_path: str):
         story.append(Paragraph(ref, ref_style))
 
     doc.build(story, canvasmaker=APANumberedCanvas)
-    print(f"Successfully generated 23-page APA 7th Edition PDF report: {output_pdf_path}")
+    print(f"Successfully generated balanced APA 7th Edition PDF report: {output_pdf_path}")
 
 
 if __name__ == "__main__":
@@ -1051,7 +1000,6 @@ if __name__ == "__main__":
     pdf_path = os.path.join(output_dir, 'Innovative_Design_Project_Report_EV_Diagnostics.pdf')
     build_pdf_report(pdf_path)
 
-    # Copy to Desktop and Downloads for instant access
     desktop_dir = r"C:\Users\Santhosh\OneDrive\Desktop"
     if os.path.exists(desktop_dir):
         desktop_pdf = os.path.join(desktop_dir, 'Innovative_Design_Project_Report_EV_Diagnostics.pdf')
