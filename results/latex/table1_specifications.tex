@@ -1,0 +1,21 @@
+% Auto-generated specifications table for IEEE Transactions manuscripts
+\begin{table}[htbp]
+\caption{System Specifications, Multi-Modal Sensor Parameters, and Computational Budgets}
+\label{tab:system_specifications}
+\centering
+\begin{tabular}{lll}
+\toprule
+Subsystem Dimension & Parameter Description & Value / Standard Bound \\
+\midrule
+Cylindrical Form Factor & Cell Geometry (Diameter $\times$ Height) & 21.0 mm $\times$ 70.0 mm (21700 NMC811) \\
+Cathode / Anode Chemistry & Nominal Capacity / Voltage Range & 5.0 Ah / 2.80 V to 4.20 V \\
+Ultrasonic PZT Ring Array & Transducer Frequency / Transducer Count & 2.0 MHz center frequency / 8 circular elements \\
+Ultrasonic Time-to-Digital & Timing Resolution / Dynamic Range & 55 ps (TI TDC7200) / 92 dB (AD8307 log-amp) \\
+Electrochemical Sensing & 4-Wire Kelvin Bus & $\pm 0.1$ mV voltage / $\pm 1$ mA current (INA226) \\
+Multi-Rate Dual-UKF & Decoupled State \& Parameter Horizons & 10 Hz State ($\text{SOC}, V_1, V_2$) / 0.5 Hz Parameters ($R_0, R_1, C_1, R_2, C_2$) \\
+Physics-Informed NN & Axisymmetric Anisotropic Conductivities & $k_r = 1.2$ W/(m$\cdot$K), $k_z = 28.0$ W/(m$\cdot$K) \\
+Active Balancer Topology & Quasi-Resonant Bidirectional Flyback & 1.8 A peak transfer / 93.0\% ZVS soft-switching efficiency \\
+Embedded Execution & Target Hardware \& Memory Budget & ARM Cortex-M7 (480 MHz) / 5.84 KB Int8 quantized weights \\
+\bottomrule
+\end{tabular}
+\end{table}

@@ -31,9 +31,17 @@ jobs:
         run: |
           python run.py verify
 
-      - name: Run Full Pytest Suite (78 Tests)
+      - name: Run Full Pytest Suite (130 Tests across 25 Test Modules)
         run: |
           pytest -v
+
+      - name: Run Analytical Closed-Form Physics Verification
+        run: |
+          pytest tests/test_analytical_benchmarks.py -v
+
+      - name: Run Master Scientific Research Benchmarks Suite
+        run: |
+          python run_research_benchmarks.py
 
   frontend-build:
     name: Frontend React Dashboard Build & Tests

@@ -1,27 +1,34 @@
 cff-version: 1.2.0
 message: "If you use this software or benchmark suite in your research, please cite it as below."
+title: "EV Diagnostics and Quasi-Resonant Active Rebalancing Systems: A Cyber-Physical Platform for Second-Life Lithium-Ion Packs"
+version: 1.0.0
+date-released: 2026-10-28
+license: MIT
+repository-code: "https://github.com/santhoshvellore7119-web/EV_diagonostics"
+url: "https://github.com/santhoshvellore7119-web/EV_diagonostics"
 authors:
   - family-names: "Vellore"
     given-names: "Santhosh"
-    affiliation: "Department of Electrical and Computer Engineering"
-title: "Multi-Modal Physics-Informed Ultrasonic Tomography and Quasi-Resonant Active Balancing for Second-Life EV Battery Packs"
-version: 2.1.0
-date-released: 2026-10-15
-url: "https://github.com/santhoshvellore7119-web/EV_diagonostics"
+    affiliation: "Department of Electrical and Computer Engineering, Vellore Institute of Technology"
 keywords:
   - "battery management systems"
+  - "lithium-ion batteries"
   - "ultrasonic tomography"
   - "physics-informed neural networks"
+  - "single particle model"
   - "dual unscented kalman filter"
   - "active cell rebalancing"
-  - "lithium plating"
-  - "second-life electric vehicles"
+  - "quasi-resonant flyback"
+  - "zero-voltage switching"
+  - "lithium plating detection"
+  - "second-life energy storage"
 preferred-citation:
   type: article
   authors:
     - family-names: "Vellore"
       given-names: "Santhosh"
-  title: "Multi-Modal Physics-Informed Ultrasonic Tomography and Quasi-Resonant Active Balancing for Second-Life EV Battery Packs"
   journal: "IEEE Transactions on Transportation Electrification"
+  title: "Multi-Modal Physics-Informed Ultrasonic Tomography and Quasi-Resonant Active Balancing for Second-Life EV Battery Packs"
   year: 2026
-  month: 10
+  pages: "1-14"
+  status: "under-review"

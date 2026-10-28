@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -295,8 +295,22 @@ manager = ConnectionManager()
 
 
 # API Endpoints
+@app.get("/")
+async def root(request: Request):
+    accept = request.headers.get("accept", "")
+    frontend_index = os.path.join(project_root, "frontend", "build", "index.html")
+    if ("text/html" in accept and "application/json" not in accept and not accept.startswith("*/*")) and os.path.exists(frontend_index):
+        return FileResponse(frontend_index)
+    return {
+        "name": "Unified Diagnostic Dashboard API",
+        "version": "1.0.0",
+        "status": "online",
+        "active_mode": active_mode
+    }
+
+
 @app.get("/api/status")
-async def root():
+async def api_status():
     return {
         "name": "Unified Diagnostic Dashboard API",
         "version": "1.0.0",
@@ -1348,10 +1362,26 @@ async def get_benchmark_summary_endpoint():
     return {"status": "pending", "message": "Run python run_research_benchmarks.py to generate summary"}
 
 
-# Mount production frontend build if available
+# Mount production frontend build static assets if available
 frontend_build_dir = os.path.join(project_root, "frontend", "build")
 if os.path.exists(frontend_build_dir):
-    app.mount("/", StaticFiles(directory=frontend_build_dir, html=True), name="frontend")
+    static_dir = os.path.join(frontend_build_dir, "static")
+    if os.path.exists(static_dir):
+        app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    fav = os.path.join(frontend_build_dir, "favicon.ico")
+    if os.path.exists(fav):
+        return FileResponse(fav)
+    raise HTTPException(status_code=404)
+
+@app.get("/manifest.json", include_in_schema=False)
+async def manifest():
+    mf = os.path.join(frontend_build_dir, "manifest.json")
+    if os.path.exists(mf):
+        return FileResponse(mf)
+    raise HTTPException(status_code=404)
 
 
 if __name__ == "__main__":

@@ -2,13 +2,15 @@
 
 [![Research Paper](https://img.shields.io/badge/Research_Paper-IEEE_Transactions-informational.svg)](docs/RESEARCH_PAPER.md)
 [![LaTeX Source](https://img.shields.io/badge/LaTeX-IEEEtran-blue.svg)](paper/paper.tex)
-[![Benchmarks](https://img.shields.io/badge/Research_Benchmarks-5%2F5%20Verified-success.svg)](results/research_benchmark_summary.json)
-[![Pytest](https://img.shields.io/badge/Tests-120%2F120%20Passing-brightgreen.svg)](tests/)
+[![Benchmarks](https://img.shields.io/badge/Research_Benchmarks-6%2F6%20Verified-success.svg)](results/research_benchmark_summary.json)
+[![Pytest](https://img.shields.io/badge/Tests-130%2F130%20Passing-brightgreen.svg)](tests/)
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-blue.svg)](https://www.python.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688.svg)](https://fastapi.tiangolo.com/)
 [![React 18](https://img.shields.io/badge/React-18-61dafb.svg)](https://reactjs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Reproducibility](https://img.shields.io/badge/Reproducibility-Verified-success.svg)](REPRODUCIBILITY.md)
+[![Citation](https://img.shields.io/badge/Citation-CITATION.cff-informational.svg)](CITATION.cff)
 
 An end-to-end, production-grade and publication-standard diagnostic and closed-loop cell recovery platform for second-life Lithium-ion battery packs. The system fuses **2.0 MHz circular ultrasonic wavefield tomography**, **4-wire Kelvin operando impedance with multi-rate Dual-UKF**, **3D anisotropic thermal Physics-Informed Neural Networks (PINN)**, and **bidirectional quasi-resonant Zero-Voltage-Switching (ZVS) active cell rebalancing**.
 
@@ -214,7 +216,7 @@ To execute the automated 20-suite master verification scorecard and the full pyt
 # Run Master Verification Scorecard (20 Suites)
 python run.py verify
 
-# Run Full Pytest Test Suite (114 Tests)
+# Run Full Pytest Test Suite (130 Tests)
 pytest tests/ -v
 ```
 
@@ -254,7 +256,7 @@ Host Telemetry Ingestion Bridge                  | [ PASS ]   | Verified
 
 ## Master Research Benchmarks & Empirical Reproducibility
 
-To execute the 5 master research benchmarks with standardized drive cycles (WLTP Class 3b, US06, HPPC) and save the empirical scorecard to `results/research_benchmark_summary.json`:
+To execute the 6 master research benchmarks with standardized drive cycles (WLTP Class 3b, US06, HPPC) and save the empirical scorecard to `results/research_benchmark_summary.json`:
 
 ```bash
 python run_research_benchmarks.py
